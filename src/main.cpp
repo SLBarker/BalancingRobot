@@ -10,8 +10,9 @@
 #include <menuIO/serialOut.h>
 #include <menuIO/serialIn.h>
 #include <menuIO/stringIn.h>
-#include <StepControl.h>
+#include "motor.h"
 #include "MPU6050_6Axis_MotionApps20.h"
+#include "config.h"
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -22,21 +23,26 @@
 using namespace Menu;
 
 #define INTERRUPT_PIN 2
-#define OLED_CS_PIN 15
+
 #define OLED_DC_PIN 26
 #define OLED_RST_PIN 255
 #define OLED_MOSI_PIN 11
 #define OLED_SCLK_PIN 14
+#define OLED_CS_PIN 15
+
 #define LED_PIN 13
-#define MOTOR_ENABLE_PIN 16
 
 #define BLUETOOTH_SERIAL Serial5
 
 #define OUTPUT_READABLE_YAWPITCHROLL
 
+#define MENU_TEXT_SCALE 1
+#define MAX_DEPTH 4
+
 MPU6050 mpu;
 SSD_13XX gfx(OLED_CS_PIN, OLED_DC_PIN, OLED_RST_PIN, OLED_MOSI_PIN, OLED_SCLK_PIN);
 _GoBLE goble(&BLUETOOTH_SERIAL);
+robotConfiguration robotConfig;
 
 
 // MPU control/status vars
@@ -56,16 +62,184 @@ VectorFloat gravity;    // [x, y, z]            gravity vector
 float euler[3];         // [psi, theta, phi]    Euler angle container
 float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
 
-Stepper motor_left(24, 25);         // STEP pin: 24, DIR pin: 25
-Stepper motor_right(27, 28);         // STEP pin: 11, DIR pin: 12
-StepControl<> controller_left;    // Use default settings
-StepControl<> controller_right;
+
 
 int test=55;
 int ledCount=0;
 int motorCtrl=HIGH;
 
 result doAlert(eventMask e, prompt &item);
+
+using namespace Menu;
+
+
+
+navCodesDef myNavCodes={
+  {noCmd,(char)0xff},
+  {escCmd,'/'},
+  {enterCmd,'*'},
+  {upCmd,'-'},
+  {downCmd,'+'},
+  {leftCmd,'<'},
+  {rightCmd,'>'},
+  {idxCmd,'H'},
+  {scrlUpCmd,0x35},
+  {scrlUpCmd,0x36}
+};
+
+config myOptions('*', '-', myNavCodes, false);
+
+result doToggleMotorCtrl() {
+  enableMotors(motorCtrl);
+  return proceed;
+}
+result doMotorStep() {
+  Serial.print("Stepping Mode:");
+  Serial.println(robotConfig.motorConfig.stepMode);
+  writeConfig(robotConfig);
+}
+
+TOGGLE(motorCtrl,setMotor,"Motor Control: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+  ,VALUE("Off", false, doToggleMotorCtrl, enterEvent)
+  ,VALUE("On", true, doToggleMotorCtrl, enterEvent)
+);
+
+int selTest=0;
+SELECT(selTest,selMenu,"Select Test",doNothing,noEvent,noStyle
+  ,VALUE("Zero",0,doNothing,noEvent)
+  ,VALUE("One",1,doNothing,noEvent)
+  ,VALUE("Two",2,doNothing,noEvent)
+);
+
+int chooseTest=-1;
+CHOOSE(chooseTest,chooseMenu,"Choose Test",doNothing,noEvent,noStyle
+  ,VALUE("First",1,doNothing,noEvent)
+  ,VALUE("Second",2,doNothing,noEvent)
+  ,VALUE("Third",3,doNothing,noEvent)
+  ,VALUE("Last",-1,doNothing,noEvent)
+);
+
+//int chooseTest=-1;
+// robotConfig.motorConfig.stepMode
+//CHOOSE(chooseTest,chooseMotorModeMenu,"Motor Mode",doNothing,noEvent,noStyle
+//  ,VALUE("Full Step",1,doMotorStep,noEvent)
+//  ,VALUE("1/2 Step",halfStep,doMotorStep,noEvent)
+//  ,VALUE("1/4 Step",quarterStep,doMotorStep,noEvent)
+//  ,VALUE("1/8 Step",eighthStep,doMotorStep,noEvent)
+//  ,VALUE("1/16 Step",sixteenthStep,doMotorStep,noEvent)
+//  ,VALUE("1/32 Step",thirtySecondStep,doMotorStep,noEvent)
+//);
+
+//customizing a prompt look!
+//by extending the prompt class
+class altPrompt:public prompt {
+public:
+  altPrompt(constMEM promptShadow& p):prompt(p) {}
+  Used printTo(navRoot &root,bool sel,menuOut& out, idx_t idx,idx_t len,idx_t) override {
+    return out.printRaw("special prompt!",len);;
+  }
+};
+
+MENU(subMenu,"Sub-Menu",doNothing,noEvent,noStyle
+  ,altOP(altPrompt,"",doNothing,noEvent)
+  ,OP("Op",doNothing,noEvent)
+  ,EXIT("<Back")
+);
+
+char* constMEM hexDigit MEMMODE="0123456789ABCDEF";
+char* constMEM hexNr[] MEMMODE={"0","x",hexDigit,hexDigit};
+char buf1[]="0x11";
+
+MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
+  ,SUBMENU(subMenu)
+  ,SUBMENU(setMotor)
+  //,OP("Motor En On",motorControlOn,enterEvent)
+  //,OP("Motor En Off",motorControlOff,enterEvent)
+  ,SUBMENU(selMenu)
+
+  //,SUBMENU(chooseMotorModeMenu)
+  //,OP("Alert test",doAlert,enterEvent)
+  ,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
+  //,EDIT("Hex",buf1,hexNr,doNothing,noEvent,noStyle)
+  ,EXIT("<Exit")
+);
+
+
+// define menu colors --------------------------------------------------------
+//  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
+//monochromatic color table
+
+#define GRAY RGB565(128,128,128)
+
+const colorDef<uint16_t> colors[] MEMMODE={
+  {{BLACK,BLACK},{BLACK,BLUE,BLUE}},//bgColor
+  {{GRAY,GRAY},{WHITE,WHITE,WHITE}},//fgColor
+  {{WHITE,BLACK},{YELLOW,YELLOW,RED}},//valColor
+  {{WHITE,BLACK},{WHITE,YELLOW,YELLOW}},//unitColor
+  {{WHITE,GRAY},{BLACK,BLUE,WHITE}},//cursorColor
+  {{WHITE,YELLOW},{BLACK,RED,RED}},//titleColor
+};
+
+stringIn<4> strIn; //buffer size: 2^5 = 32 bytes, eventually use 0 for a single byte
+MENU_INPUTS(in,&strIn);
+
+
+MENU_OUTPUTS(out,MAX_DEPTH
+  ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,25,6})
+  //,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,20,6}, {10,0,10,6})
+  //  ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,14,8},{14,0,14,8})
+  ,SERIAL_OUT(Serial)
+);
+
+NAVROOT(nav,mainMenu,MAX_DEPTH,in,out);
+
+//when menu is suspended
+result idle(menuOut& o,idleEvent e) {
+  if (e==idling) {
+    o.println(F("suspended..."));
+    o.println(F("press [select]"));
+    o.println(F("to continue"));
+  }
+  return proceed;
+}
+
+void initMenu() {
+  // configure custom options
+  options=&myOptions;
+
+//point a function to be used when menu is suspended
+  nav.idleTask=idle;
+}
+
+
+
+void checkForNavInput(stringIn<4u>& in) {
+
+  int ch = -1;
+  if (goble.available()) {
+    Serial.println("input detected");
+    if (goble.readSwitchUp() == PRESSED)
+      ch = '+';
+
+    if (goble.readSwitchDown() == PRESSED)
+      ch = '-';
+
+    if (goble.readSwitchLeft() == PRESSED)
+      ch = '<';
+
+    if (goble.readSwitchRight() == PRESSED)
+      ch = '>';
+
+    if (goble.readSwitchSelect() == PRESSED)
+      ch = '/';
+
+    if (goble.readSwitchStart() == PRESSED)
+      ch = '*';
+  }
+  if (ch != -1) {
+    in.write(ch);
+  }
+}
 
 
 
@@ -107,144 +281,18 @@ void processMpuData() {
       //    displayYPRBar(48, 35, 47, 15, GREEN, ypr[1] *180/M_PI);
       //      displayYPRBar(48, 50, 47, 15, BLUE, ypr[2] *180/M_PI);
 
-         motor_right.setMaxSpeed(ypr[1] * 15000);  // Set target position to 1000 steps from current position
-         motor_left.setMaxSpeed(ypr[2] * 15000);
-         controller_left.rotateAsync(motor_left);    // Do the move
-         controller_right.rotateAsync(motor_right);
+        setMotorSpeedLeft(ypr[2] * 15000);
+        setMotorSpeedRight(ypr[1] * 15000);
       #endif
 
   }
-}
-
-//void dmpDataReady() {
-//    processMpuData();
-//}
-
-result doToggleMotorCtrl() {
-  Serial.println("Motor Toggle");
-  digitalWrite(MOTOR_ENABLE_PIN, motorCtrl);
-  return proceed;
-}
-
-navCodesDef myNavCodes={
-  {noCmd,(char)0xff},
-  {escCmd,'/'},
-  {enterCmd,'*'},
-  {upCmd,'-'},
-  {downCmd,'+'},
-  {leftCmd,'<'},
-  {rightCmd,'>'},
-  {idxCmd,'H'},
-  {scrlUpCmd,0x35},
-  {scrlUpCmd,0x36}
-};
-
-config myOptions('*', '-', myNavCodes, false);
-
-TOGGLE(motorCtrl,setMotor,"Motor Control: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
-  ,VALUE("Off", HIGH, doToggleMotorCtrl, enterEvent)
-  ,VALUE("On", LOW, doToggleMotorCtrl, enterEvent)
-);
-
-int selTest=0;
-SELECT(selTest,selMenu,"Select Test",doNothing,noEvent,noStyle
-  ,VALUE("Zero",0,doNothing,noEvent)
-  ,VALUE("One",1,doNothing,noEvent)
-  ,VALUE("Two",2,doNothing,noEvent)
-);
-
-int chooseTest=-1;
-CHOOSE(chooseTest,chooseMenu,"Choose Test",doNothing,noEvent,noStyle
-  ,VALUE("First",1,doNothing,noEvent)
-  ,VALUE("Second",2,doNothing,noEvent)
-  ,VALUE("Third",3,doNothing,noEvent)
-  ,VALUE("Last",-1,doNothing,noEvent)
-);
-
-//customizing a prompt look!
-//by extending the prompt class
-class altPrompt:public prompt {
-public:
-  altPrompt(constMEM promptShadow& p):prompt(p) {}
-  Used printTo(navRoot &root,bool sel,menuOut& out, idx_t idx,idx_t len,idx_t) override {
-    return out.printRaw("special prompt!",len);;
-  }
-};
-
-MENU(subMenu,"Sub-Menu",doNothing,noEvent,noStyle
-  ,altOP(altPrompt,"",doNothing,noEvent)
-  ,OP("Op",doNothing,noEvent)
-  ,EXIT("<Back")
-);
-
-char* constMEM hexDigit MEMMODE="0123456789ABCDEF";
-char* constMEM hexNr[] MEMMODE={"0","x",hexDigit,hexDigit};
-char buf1[]="0x11";
-
-MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
-  ,SUBMENU(subMenu)
-  ,SUBMENU(setMotor)
-  //,OP("Motor En On",motorControlOn,enterEvent)
-  //,OP("Motor En Off",motorControlOff,enterEvent)
-  ,SUBMENU(selMenu)
-  ,SUBMENU(chooseMenu)
-  //,OP("Alert test",doAlert,enterEvent)
-  ,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
-  //,EDIT("Hex",buf1,hexNr,doNothing,noEvent,noStyle)
-  ,EXIT("<Exit")
-);
-
-
-// define menu colors --------------------------------------------------------
-//  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
-//monochromatic color table
-
-#define GRAY RGB565(128,128,128)
-
-const colorDef<uint16_t> colors[] MEMMODE={
-  {{BLACK,BLACK},{BLACK,BLUE,BLUE}},//bgColor
-  {{GRAY,GRAY},{WHITE,WHITE,WHITE}},//fgColor
-  {{WHITE,BLACK},{YELLOW,YELLOW,RED}},//valColor
-  {{WHITE,BLACK},{WHITE,YELLOW,YELLOW}},//unitColor
-  {{WHITE,GRAY},{BLACK,BLUE,WHITE}},//cursorColor
-  {{WHITE,YELLOW},{BLACK,RED,RED}},//titleColor
-};
-
-stringIn<4> strIn; //buffer size: 2^5 = 32 bytes, eventually use 0 for a single byte
-serialIn serial(Serial);
-MENU_INPUTS(in,&strIn);
-
-#define MAX_DEPTH 4
-#define textScale 1
-MENU_OUTPUTS(out,MAX_DEPTH
-  ,SSD1331_OUT(gfx,colors,6*textScale,9*textScale,{0,0,25,6})
-  //  ,SSD1331_OUT(gfx,colors,6*textScale,9*textScale,{0,0,14,8},{14,0,14,8})
-  ,SERIAL_OUT(Serial)
-);
-
-NAVROOT(nav,mainMenu,MAX_DEPTH,in,out);
-
-//when menu is suspended
-result idle(menuOut& o,idleEvent e) {
-  if (e==idling) {
-    o.println(F("suspended..."));
-    o.println(F("press [select]"));
-    o.println(F("to continue"));
-  }
-  return proceed;
-}
-
-void initMenu() {
-  options=&myOptions;
 }
 
 void setup() {
   Serial.begin(115200);
   BLUETOOTH_SERIAL.begin(9600);
 
-  pinMode(MOTOR_ENABLE_PIN, OUTPUT);
-  digitalWrite(MOTOR_ENABLE_PIN, motorCtrl);
-
+  initMotor();
 
   // join I2C bus (I2Cdev library doesn't do this automatically)
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -256,13 +304,6 @@ void setup() {
 
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
-  mpu.initialize();
-  pinMode(INTERRUPT_PIN, INPUT);
-
-  // configure motors
-  motor_left.setPullInSpeed(3000);
-  motor_right.setPullInSpeed(3000);
-
 
   pinMode(LED_PIN, OUTPUT);
 
@@ -271,14 +312,22 @@ void setup() {
 
   gfx.begin(false);
   gfx.setRotation(2);
-  gfx.setTextScale(textScale);
+  gfx.setTextScale(MENU_TEXT_SCALE);
   gfx.setTextWrap(false);
   gfx.fillScreen(BLACK);
   gfx.setTextColor(RED,BLACK);
-  gfx.println("Setup...");
-  Serial.flush();
-  nav.idleTask=idle;//point a function to be used when menu is suspended
+  gfx.println("Setup ...");
 
+
+  Serial.flush();
+  BLUETOOTH_SERIAL.flush();
+
+
+
+
+
+  mpu.initialize();
+  pinMode(INTERRUPT_PIN, INPUT);
 
   // verify connection
   Serial.println(F("Testing device connections..."));
@@ -312,10 +361,6 @@ void setup() {
       // get expected DMP packet size for later comparison
       packetSize = mpu.dmpGetFIFOPacketSize();
   } else {
-      // ERROR!
-      // 1 = initial memory load failed
-      // 2 = DMP configuration updates failed
-      // (if it's going to break, usually the code will be 1)
       Serial.print(F("DMP Initialization failed (code "));
       Serial.print(devStatus);
       Serial.println(F(")"));
@@ -338,45 +383,9 @@ void fadeLed() {
 }
 
 
-void checkForNavInput(stringIn<4u>& in) {
-
-  int ch = -1;
-  if (goble.available()) {
-    Serial.println("input detected");
-    if (goble.readSwitchUp() == PRESSED)
-      ch = '+';
-
-    if (goble.readSwitchDown() == PRESSED)
-      ch = '-';
-
-    if (goble.readSwitchLeft() == PRESSED)
-      ch = '<';
-
-    if (goble.readSwitchRight() == PRESSED)
-      ch = '>';
-
-    if (goble.readSwitchSelect() == PRESSED)
-      ch = '/';
-
-    if (goble.readSwitchStart() == PRESSED)
-      ch = '*';
-  }
-  if (ch != -1) {
-    in.write(ch);
-  }
-}
-
-
 void loop() {
-  // if programming failed, don't try to do anything
-  // if (!dmpReady) return;
-  //Serial.println("looping");
-  // wait for MPU interrupt or extra packet(s) available
-  //while (!mpuInterrupt && fifoCount < packetSize) {
-    //Serial.println("start poll");
     checkForNavInput(strIn);
-    nav.poll();//this device only draws when needed
+    nav.poll();
     fadeLed();
     delay(1);
-  //}
 }
