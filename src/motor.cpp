@@ -7,13 +7,27 @@ Stepper motor_right(MOTOR_RIGHT_STEP_PIN, MOTOR_RIGHT_DIR_PIN);
 StepControl<> controller_left;
 StepControl<> controller_right;
 
-void enableMotors(bool enable) {
-  digitalWrite(MOTOR_ENABLE_PIN, enable?LOW:HIGH);
+void enableMotors(bool enabled) {
+  digitalWrite(MOTOR_ENABLE_PIN, enabled?LOW:HIGH);
+}
+
+void setMotorStep(int stepMode) {
+    Serial.print("Stepping Mode:");
+    Serial.println(stepMode);
+
+    digitalWrite(MOTOR_STEP_MO_PIN, (stepMode & MOTOR_STEP_MO)?HIGH:LOW);
+    digitalWrite(MOTOR_STEP_M1_PIN, (stepMode & MOTOR_STEP_M1)?HIGH:LOW);
+    digitalWrite(MOTOR_STEP_M2_PIN, (stepMode & MOTOR_STEP_M2)?HIGH:LOW);
 }
 
 void initMotor() {
+  // configure the pin used for master motor enable.
   pinMode(MOTOR_ENABLE_PIN, OUTPUT);
-  enableMotors(false);
+
+  // configure the pins used to control the stepping mode.
+  pinMode(MOTOR_STEP_MO_PIN, OUTPUT);
+  pinMode(MOTOR_STEP_M1_PIN, OUTPUT);
+  pinMode(MOTOR_STEP_M2_PIN, OUTPUT);
 
   // configure motors
   motor_left.setPullInSpeed(MOTOR_PULL_IN_SPEED);

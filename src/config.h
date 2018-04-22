@@ -3,19 +3,10 @@
 
   #define CONFIG_VERSION 1
 
-  enum stepping {
-    fullStep = 0,
-    halfStep = 4,
-    quarterStep = 2,
-    eighthStep = 6,
-    sixteenthStep = 1,
-    thirtySecondStep = 5
-  };
-
   typedef struct
   {
-    bool enable;
-    enum stepping stepMode;
+    bool enabled;
+    int stepMode;
   } motorConfiguration;
 
   typedef struct
@@ -37,6 +28,5 @@
   robotConfiguration createDefaultConfig();
   robotConfiguration readConfig();
   bool writeConfig(robotConfiguration);
-
-
+  void applyConfig(robotConfiguration config);
 #endif

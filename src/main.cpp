@@ -90,16 +90,20 @@ navCodesDef myNavCodes={
 config myOptions('*', '-', myNavCodes, false);
 
 result doToggleMotorCtrl() {
-  enableMotors(motorCtrl);
+  enableMotors(robotConfig.motorConfig.enabled);
   return proceed;
 }
 result doMotorStep() {
-  Serial.print("Stepping Mode:");
-  Serial.println(robotConfig.motorConfig.stepMode);
-  writeConfig(robotConfig);
+  setMotorStep(robotConfig.motorConfig.stepMode);
+  return proceed;
 }
 
-TOGGLE(motorCtrl,setMotor,"Motor Control: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+result doSaveConfig() {
+  writeConfig(robotConfig);
+  return proceed;
+}
+
+TOGGLE(robotConfig.motorConfig.enabled,setMotor,"Motor Control: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
   ,VALUE("Off", false, doToggleMotorCtrl, enterEvent)
   ,VALUE("On", true, doToggleMotorCtrl, enterEvent)
 );
@@ -111,24 +115,14 @@ SELECT(selTest,selMenu,"Select Test",doNothing,noEvent,noStyle
   ,VALUE("Two",2,doNothing,noEvent)
 );
 
-int chooseTest=-1;
-CHOOSE(chooseTest,chooseMenu,"Choose Test",doNothing,noEvent,noStyle
-  ,VALUE("First",1,doNothing,noEvent)
-  ,VALUE("Second",2,doNothing,noEvent)
-  ,VALUE("Third",3,doNothing,noEvent)
-  ,VALUE("Last",-1,doNothing,noEvent)
+CHOOSE(robotConfig.motorConfig.stepMode,chooseMotorModeMenu,"Motor Mode",doNothing,noEvent,noStyle
+  ,VALUE("Full Step", MOTOR_FULL_STEP,doMotorStep,enterEvent)
+  ,VALUE("1/2 Step", MOTOR_HALF_STEP,doMotorStep,enterEvent)
+  ,VALUE("1/4 Step", MOTOR_QUARTER_STEP,doMotorStep,enterEvent)
+  ,VALUE("1/8 Step", MOTOR_EIGHTH_STEP,doMotorStep,enterEvent)
+  ,VALUE("1/16 Step", MOTOR_SIXTEENTH_STEP,doMotorStep,enterEvent)
+  ,VALUE("1/32 Step", MOTOR_THIRTYSECOND_STEP,doMotorStep,enterEvent)
 );
-
-//int chooseTest=-1;
-// robotConfig.motorConfig.stepMode
-//CHOOSE(chooseTest,chooseMotorModeMenu,"Motor Mode",doNothing,noEvent,noStyle
-//  ,VALUE("Full Step",1,doMotorStep,noEvent)
-//  ,VALUE("1/2 Step",halfStep,doMotorStep,noEvent)
-//  ,VALUE("1/4 Step",quarterStep,doMotorStep,noEvent)
-//  ,VALUE("1/8 Step",eighthStep,doMotorStep,noEvent)
-//  ,VALUE("1/16 Step",sixteenthStep,doMotorStep,noEvent)
-//  ,VALUE("1/32 Step",thirtySecondStep,doMotorStep,noEvent)
-//);
 
 //customizing a prompt look!
 //by extending the prompt class
@@ -146,19 +140,22 @@ MENU(subMenu,"Sub-Menu",doNothing,noEvent,noStyle
   ,EXIT("<Back")
 );
 
+MENU(motorMenu,"Motor Cfg",doNothing,noEvent,noStyle
+  ,SUBMENU(setMotor)
+  ,SUBMENU(chooseMotorModeMenu)
+  ,EXIT("<Back")
+);
+
 char* constMEM hexDigit MEMMODE="0123456789ABCDEF";
 char* constMEM hexNr[] MEMMODE={"0","x",hexDigit,hexDigit};
 char buf1[]="0x11";
 
 MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
-  ,SUBMENU(subMenu)
-  ,SUBMENU(setMotor)
-  //,OP("Motor En On",motorControlOn,enterEvent)
-  //,OP("Motor En Off",motorControlOff,enterEvent)
+  ,SUBMENU(motorMenu)
+  //,SUBMENU(setMotor)
   ,SUBMENU(selMenu)
-
-  //,SUBMENU(chooseMotorModeMenu)
-  //,OP("Alert test",doAlert,enterEvent)
+//  ,SUBMENU(chooseMotorModeMenu)
+  ,OP("Save Configuration",doSaveConfig,enterEvent)
   ,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
   //,EDIT("Hex",buf1,hexNr,doNothing,noEvent,noStyle)
   ,EXIT("<Exit")
@@ -169,14 +166,14 @@ MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
 //  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
 //monochromatic color table
 
-#define GRAY RGB565(128,128,128)
+#define GRAY RGB565(32,32,32)
 
 const colorDef<uint16_t> colors[] MEMMODE={
-  {{BLACK,BLACK},{BLACK,BLUE,BLUE}},//bgColor
+  {{BLACK,BLACK},{GRAY,BLUE,BLUE}},//bgColor
   {{GRAY,GRAY},{WHITE,WHITE,WHITE}},//fgColor
   {{WHITE,BLACK},{YELLOW,YELLOW,RED}},//valColor
   {{WHITE,BLACK},{WHITE,YELLOW,YELLOW}},//unitColor
-  {{WHITE,GRAY},{BLACK,BLUE,WHITE}},//cursorColor
+  {{WHITE,GRAY},{GRAY,BLUE,WHITE}},//cursorColor
   {{WHITE,YELLOW},{BLACK,RED,RED}},//titleColor
 };
 
@@ -185,7 +182,7 @@ MENU_INPUTS(in,&strIn);
 
 
 MENU_OUTPUTS(out,MAX_DEPTH
-  ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,25,6})
+  ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,25,4})
   //,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,20,6}, {10,0,10,6})
   //  ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,14,8},{14,0,14,8})
   ,SERIAL_OUT(Serial)
@@ -217,7 +214,7 @@ void checkForNavInput(stringIn<4u>& in) {
 
   int ch = -1;
   if (goble.available()) {
-    Serial.println("input detected");
+    //Serial.println("input detected");
     if (goble.readSwitchUp() == PRESSED)
       ch = '+';
 
@@ -292,7 +289,9 @@ void setup() {
   Serial.begin(115200);
   BLUETOOTH_SERIAL.begin(9600);
 
+  robotConfig = readConfig();
   initMotor();
+  applyConfig(robotConfig);
 
   // join I2C bus (I2Cdev library doesn't do this automatically)
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
