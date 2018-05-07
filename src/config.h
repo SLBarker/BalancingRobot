@@ -1,7 +1,18 @@
 #ifndef ROBOT_CONFIG
   #define ROBOT_CONFIG
 
-  #define CONFIG_VERSION 1
+  #define CONFIG_VERSION 5
+  #include <Arduino.h>
+
+  typedef struct
+  {
+    int xGyroOffset;
+    int yGyroOffset;
+    int zGyroOffset;
+    int xAccelOffset;
+    int yAccelOffset;
+    int zAccelOffset;
+  } mpuCalibrationConfiguration;
 
   typedef struct
   {
@@ -22,6 +33,7 @@
     int version;
     motorConfiguration motorConfig;
     pidConfiguration pidConfig;
+    mpuCalibrationConfiguration mpuConfig;
   } robotConfiguration;
 
 

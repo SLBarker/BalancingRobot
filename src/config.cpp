@@ -2,6 +2,7 @@
 #include "eepromStruct.h"
 #include "motor.h"
 #include "config.h"
+#include "mpu.h"
 
 
 robotConfiguration createDefaultConfig() {
@@ -14,6 +15,14 @@ robotConfiguration createDefaultConfig() {
   config.pidConfig.potential = 1.0;
   config.pidConfig.integral = 2.0;
   config.pidConfig.derivative = 3.0;
+
+  config.mpuConfig.xGyroOffset = 0;
+  config.mpuConfig.yGyroOffset = 0;
+  config.mpuConfig.zGyroOffset = 0;
+
+  config.mpuConfig.xAccelOffset = 0;
+  config.mpuConfig.yAccelOffset = 0;
+  config.mpuConfig.zAccelOffset = 2160;
 
   return config;
 }
@@ -42,6 +51,11 @@ void applyMotorConfig(motorConfiguration motorConfig) {
   setMotorStep(motorConfig.stepMode);
 }
 
+void applyMpuConfig(mpuCalibrationConfiguration mpuConfig) {
+  setMpuOffsets(mpuConfig);
+}
+
 void applyConfig(robotConfiguration config) {
   applyMotorConfig(config.motorConfig);
+  applyMpuConfig(config.mpuConfig);
 }

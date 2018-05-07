@@ -11,18 +11,10 @@
 #include <menuIO/serialIn.h>
 #include <menuIO/stringIn.h>
 #include "motor.h"
-#include "MPU6050_6Axis_MotionApps20.h"
+#include "mpu.h"
 #include "config.h"
 
-// Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
-// is used in I2Cdev.h
-#if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-    #include "Wire.h"
-#endif
-
 using namespace Menu;
-
-#define INTERRUPT_PIN 2
 
 #define OLED_DC_PIN 26
 #define OLED_RST_PIN 255
@@ -34,46 +26,22 @@ using namespace Menu;
 
 #define BLUETOOTH_SERIAL Serial5
 
-#define OUTPUT_READABLE_YAWPITCHROLL
-
 #define MENU_TEXT_SCALE 1
 #define MAX_DEPTH 4
 #define GRAY RGB565(32,32,32)
 
-MPU6050 mpu;
 SSD_13XX gfx(OLED_CS_PIN, OLED_DC_PIN, OLED_RST_PIN, OLED_MOSI_PIN, OLED_SCLK_PIN);
 _GoBLE goble(&BLUETOOTH_SERIAL);
 robotConfiguration robotConfig;
 
-
-// MPU control/status vars
-bool dmpReady = false;  // set true if DMP init was successful
-uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
-uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
-uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
-uint16_t fifoCount;     // count of all bytes currently in FIFO
-uint8_t fifoBuffer[64]; // FIFO storage buffer
-
-// orientation/motion vars
-Quaternion q;           // [w, x, y, z]         quaternion container
-// VectorInt16 aa;         // [x, y, z]            accel sensor measurements
-// VectorInt16 aaReal;     // [x, y, z]            gravity-free accel sensor measurements
-// VectorInt16 aaWorld;    // [x, y, z]            world-frame accel sensor measurements
-VectorFloat gravity;    // [x, y, z]            gravity vector
-float euler[3];         // [psi, theta, phi]    Euler angle container
-float ypr[3];           // [yaw, pitch, roll]   yaw/pitch/roll container and gravity vector
-
-
-
 int test=55;
 int ledCount=0;
 bool joystickTestMode = false;
+bool mpuCalibrateMode = false;
 int lastx, lasty;
 result doAlert(eventMask e, prompt &item);
 
 using namespace Menu;
-
-
 
 navCodesDef myNavCodes={
   {noCmd,(char)0xff},
@@ -99,11 +67,20 @@ result doMotorStep() {
   setMotorStep(robotConfig.motorConfig.stepMode);
   return proceed;
 }
+
 result doJoystickTest() {
 
   gfx.fillRect(0, 27, 191, 39,GRAY);
   lastx=0;
   lasty=0;
+  return proceed;
+}
+
+result doMpuCalibrate() {
+
+  if (mpuCalibrateMode) {
+  }
+  gfx.fillRect(0, 27, 191, 39,GRAY);
   return proceed;
 }
 
@@ -123,6 +100,11 @@ TOGGLE(robotConfig.motorConfig.enabled,setMotor,"Motor Control: ",doNothing,noEv
 TOGGLE(joystickTestMode,joystickTest,"Joystick test: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
   ,VALUE("Off", false, doJoystickTest, enterEvent)
   ,VALUE("On", true, doJoystickTest, enterEvent)
+);
+
+TOGGLE(mpuCalibrateMode,mpuCalibrate,"Calibrate: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+  ,VALUE("Off", false, doMpuCalibrate, enterEvent)
+  ,VALUE("On", true, doMpuCalibrate, enterEvent)
 );
 
 int selTest=0;
@@ -157,7 +139,21 @@ MENU(motorMenu,"Motor Cfg",doNothing,noEvent,noStyle
   ,EXIT("<Back")
 );
 
-
+/*
+MENU(mpuMenu,"Gyro/Accel Cfg",doNothing,noEvent,noStyle
+  ,FIELD(robotConfig.mpuConfig.xGyroOffset,"x Gyro Offset","",0,255,10,1,doMpuCalibrate,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.mpuConfig.yGyroOffset,"y Gyro Offset","",0,255,10,1,doMpuCalibrate,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.mpuConfig.zGyroOffset,"z Gyro Offset","",0,255,10,1,doMpuCalibrate,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.mpuConfig.xAccelOffset,"x Accel Offset","",0,65535,100,10,doMpuCalibrate,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.mpuConfig.yAccelOffset,"y Accel Offset","",0,65535,100,10,doMpuCalibrate,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.mpuConfig.zAccelOffset,"z Accel Offset","",0,65535,100,10,doMpuCalibrate,enterEvent,wrapStyle)
+  ,EXIT("<Back")
+);
+*/
+MENU(mpuMenu,"MPU Calibrate",doNothing,noEvent,noStyle
+  ,SUBMENU(mpuCalibrate)
+  ,EXIT("<Back")
+);
 
 MENU(joystickMenu,"Joystick test",doNothing,noEvent,noStyle
   ,SUBMENU(joystickTest)
@@ -170,6 +166,7 @@ char buf1[]="0x11";
 
 MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
   ,SUBMENU(motorMenu)
+  ,SUBMENU(mpuMenu)
   ,SUBMENU(selMenu)
   //,SUBMENU(mpuMenu)
   ,SUBMENU(joystickMenu)
@@ -183,8 +180,6 @@ MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
 // define menu colors --------------------------------------------------------
 //  {{disabled normal,disabled selected},{enabled normal,enabled selected, enabled editing}}
 //monochromatic color table
-
-
 
 const colorDef<uint16_t> colors[] MEMMODE={
   {{BLACK,BLACK},{GRAY,BLUE,BLUE}},//bgColor
@@ -256,75 +251,12 @@ void checkForNavInput(stringIn<4u>& in) {
   }
 }
 
-
-
-// ================================================================
-// ===               INTERRUPT DETECTION ROUTINE                ===
-// ================================================================
-void processMpuData() {
-  // get INT_STATUS byte
-  mpuIntStatus = mpu.getIntStatus();
-
-  // get current FIFO count
-  fifoCount = mpu.getFIFOCount();
-
-  // check for overflow (this should never happen unless our code is too inefficient)
-  if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
-      // reset so we can continue cleanly
-      mpu.resetFIFO();
-      Serial.println(F("FIFO overflow!"));
-
-  // otherwise, check for DMP data ready interrupt (this should happen frequently)
-  } else if (mpuIntStatus & 0x02) {
-      // wait for correct available data length, should be a VERY short wait
-      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
-
-      // read a packet from FIFO
-      mpu.getFIFOBytes(fifoBuffer, packetSize);
-
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
-      fifoCount -= packetSize;
-
-      #ifdef OUTPUT_READABLE_YAWPITCHROLL
-          // display Euler angles in degrees
-          mpu.dmpGetQuaternion(&q, fifoBuffer);
-          mpu.dmpGetGravity(&gravity, &q);
-          mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
-
-      //    displayYPRBar(48, 20, 47, 15, RED, ypr[0] * 180/M_PI);
-      //    displayYPRBar(48, 35, 47, 15, GREEN, ypr[1] *180/M_PI);
-      //      displayYPRBar(48, 50, 47, 15, BLUE, ypr[2] *180/M_PI);
-
-        setMotorSpeedLeft(ypr[2] * 15000);
-        setMotorSpeedRight(ypr[1] * 15000);
-      #endif
-
-  }
-}
-
 void setup() {
   Serial.begin(115200);
   BLUETOOTH_SERIAL.begin(9600);
 
   robotConfig = readConfig();
   initMotor();
-  applyConfig(robotConfig);
-
-  // join I2C bus (I2Cdev library doesn't do this automatically)
-  #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
-      Wire.begin();
-      Wire.setClock(400000); // 400kHz I2C clock. Comment this line if having compilation difficulties
-  #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
-      Fastwire::setup(400, true);
-  #endif
-
-  // initialize device
-  Serial.println(F("Initializing I2C devices..."));
-
-  pinMode(LED_PIN, OUTPUT);
-
-
   initMenu();
 
   gfx.begin(false);
@@ -335,54 +267,14 @@ void setup() {
   gfx.setTextColor(RED,BLACK);
   gfx.println("Setup ...");
 
-
   Serial.flush();
   BLUETOOTH_SERIAL.flush();
 
+  initMpu();
 
+  applyConfig(robotConfig);
 
-
-
-  mpu.initialize();
-  pinMode(INTERRUPT_PIN, INPUT);
-
-  // verify connection
-  Serial.println(F("Testing device connections..."));
-  Serial.println(mpu.testConnection() ? F("MPU6050 connection successful") : F("MPU6050 connection failed"));
-
-  // load and configure the DMP
-  Serial.println(F("Initializing DMP..."));
-  devStatus = mpu.dmpInitialize();
-
-  // supply your own gyro offsets here, scaled for min sensitivity
-  mpu.setXGyroOffset(-19);
-  mpu.setYGyroOffset(19);
-  mpu.setZGyroOffset(2160);
-  mpu.setZAccelOffset(2160); // 1688 factory default for my test chip
-
-  // make sure it worked (returns 0 if so)
-  if (devStatus == 0) {
-      // turn on the DMP, now that it's ready
-      Serial.println(F("Enabling DMP..."));
-      mpu.setDMPEnabled(true);
-
-      // enable Arduino interrupt detection
-      Serial.println(F("Enabling interrupt detection (Arduino external interrupt 0)..."));
-      attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), processMpuData, RISING);
-      mpuIntStatus = mpu.getIntStatus();
-
-      // set our DMP Ready flag so the main loop() function knows it's okay to use it
-      Serial.println(F("DMP ready! Waiting for first interrupt..."));
-      dmpReady = true;
-
-      // get expected DMP packet size for later comparison
-      packetSize = mpu.dmpGetFIFOPacketSize();
-  } else {
-      Serial.print(F("DMP Initialization failed (code "));
-      Serial.print(devStatus);
-      Serial.println(F(")"));
-  }
-  //delay(1000);
+  pinMode(LED_PIN, OUTPUT);
   Serial.println("Setup Complete");
 }
 
@@ -427,6 +319,11 @@ void loop() {
             lastx = x;
             lasty = y;
       }
+    }
+
+    if (mpuCalibrateMode) {
+      if (autoCalibrate(&robotConfig.mpuConfig))
+        mpuCalibrateMode = false;
     }
     //fadeLed();
     delay(5);
