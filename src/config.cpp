@@ -56,7 +56,13 @@ void applyMpuConfig(mpuCalibrationConfiguration mpuConfig) {
   setMpuOffsets(mpuConfig);
 }
 
+void applyPidConfig(pidConfiguration pidConfig) {
+  setPidTunings(pidConfig);
+}
+
+
 void applyConfig(robotConfiguration config) {
   applyMotorConfig(config.motorConfig);
   applyMpuConfig(config.mpuConfig);
+  applyPidConfig(config.pidConfig);
 }

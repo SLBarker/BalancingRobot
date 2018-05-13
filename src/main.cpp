@@ -39,7 +39,9 @@ _GoBLE goble(&BLUETOOTH_SERIAL);
 int test=55;
 int ledCount=0;
 bool joystickTestMode = false;
+bool pidTestMode = false;
 bool mpuCalibrateMode = false;
+unsigned long lastUpdate;
 
 result doAlert(eventMask e, prompt &item);
 
@@ -70,7 +72,17 @@ result doMotorStep() {
   return proceed;
 }
 
+result doSetPidParams() {
+  setPidTunings(robotConfig.pidConfig);
+  return proceed;
+}
+
 result doJoystickTest() {
+  gfx.fillRect(0, 27, 191, 39,GRAY);
+  return proceed;
+}
+
+result doPidTest() {
   gfx.fillRect(0, 27, 191, 39,GRAY);
   return proceed;
 }
@@ -103,6 +115,45 @@ void showJoystickTest() {
     }
 }
 
+void showPidTest()
+{
+  if (millis() - lastUpdate > 500) {
+    lastUpdate = millis();
+    gfx.fillRect(0, 27, 97, 37,GRAY);
+
+    gfx.setCursor(0,27);
+    gfx.setTextColor(YELLOW);
+    gfx.print("Setpoint:  ");
+    gfx.setTextColor(RED);
+    gfx.println(pidSetpoint);
+
+    gfx.setTextColor(YELLOW);
+    gfx.print("Input:  ");
+    gfx.setTextColor(GREEN);
+    gfx.println(pidInput);
+
+    gfx.setTextColor(YELLOW);
+    gfx.print("Output:  ");
+    gfx.setTextColor(BLUE);
+    gfx.println(pidOutput);
+  }
+}
+
+
+void showCalibration() {
+
+  if (millis() - lastUpdate > 2000) {
+    lastUpdate = millis();
+
+    gfx.fillRect(0, 27, 96, 37,GRAY);
+    gfx.setCursor(0,27);
+    gfx.setTextColor(YELLOW);
+    gfx.printf("mg: %d, %d, %d\n", mean[GX], mean[GY], mean[GZ]);
+    gfx.printf("ma: %d, %d, %d\n", mean[AX], mean[AY], mean[AZ]);
+    gfx.printf("og: %d, %d, %d\n", robotConfig.mpuConfig.xGyroOffset,robotConfig.mpuConfig.yGyroOffset,robotConfig.mpuConfig.zGyroOffset);
+    gfx.printf("oa: %d, %d, %d\n", robotConfig.mpuConfig.xAccelOffset,robotConfig.mpuConfig.yAccelOffset,robotConfig.mpuConfig.zAccelOffset);
+  }
+}
 result doMpuCalibrate() {
 
   if (mpuCalibrateMode) {
@@ -139,6 +190,12 @@ TOGGLE(joystickTestMode,joystickTest,"Joystick test: ",doNothing,noEvent,noStyle
   ,VALUE("Off", false, doJoystickTest, enterEvent)
   ,VALUE("On", true, doJoystickTest, enterEvent)
 );
+
+TOGGLE(pidTestMode,pidTest,"PID test: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+  ,VALUE("Off", false, doPidTest, enterEvent)
+  ,VALUE("On", true, doPidTest, enterEvent)
+);
+
 
 TOGGLE(mpuCalibrateMode,mpuCalibrate,"Calibrate: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
   ,VALUE("Off", false, doMpuCalibrate, enterEvent)
@@ -178,10 +235,10 @@ MENU(motorMenu,"Motor Cfg",doNothing,noEvent,noStyle
 );
 
 
-MENU(pidMenu,"PID Cfg",doNothing, noEvent,noStyle
-  ,FIELD(robotConfig.pidConfig.kp,"Kp","",-1000,1000,10,1,doNothing,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.pidConfig.ki,"Ki","",-1000,1000,10,1,doNothing,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.pidConfig.kd,"Kd","",-1000,1000,10,1,doNothing,enterEvent,wrapStyle)
+MENU(pidCfgMenu,"PID Cfg",doNothing, noEvent,noStyle
+  ,FIELD(robotConfig.pidConfig.kp,"Kp","",-1000,1000,10,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.ki,"Ki","",-1000,1000,10,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.kd,"Kd","",-1000,1000,10,1,doSetPidParams,enterEvent,wrapStyle)
   ,EXIT("<Back")
 );
 
@@ -190,6 +247,10 @@ MENU(mpuMenu,"MPU Calibrate",doNothing,noEvent,noStyle
   ,EXIT("<Back")
 );
 
+MENU(pidMenu,"PID test",doNothing,noEvent,noStyle
+  ,SUBMENU(pidTest)
+  ,EXIT("<Back")
+);
 MENU(joystickMenu,"Joystick test",doNothing,noEvent,noStyle
   ,SUBMENU(joystickTest)
   ,EXIT("<Back")
@@ -202,9 +263,8 @@ char buf1[]="0x11";
 MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
   ,SUBMENU(motorMenu)
   ,SUBMENU(mpuMenu)
+  ,SUBMENU(pidCfgMenu)
   ,SUBMENU(pidMenu)
-  //,SUBMENU(selMenu)
-  //,SUBMENU(mpuMenu)
   ,SUBMENU(joystickMenu)
   ,OP("Save Configuration",doSaveConfig,enterEvent)
   //,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
@@ -325,9 +385,16 @@ void loop() {
       showJoystickTest();
     }
 
+    if (pidTestMode) {
+      showPidTest();
+    }
+
     if (mpuCalibrateMode) {
       if (autoCalibrate(&robotConfig.mpuConfig))
         mpuCalibrateMode = false;
+      {
+        showCalibration();
+      }
     }
     delay(5);
 }

@@ -19,9 +19,9 @@ PID pid(
     &pidInput,
     &pidOutput,
     &pidSetpoint,
-    robotConfig.pidConfig.kp,
-    robotConfig.pidConfig.ki,
-    robotConfig.pidConfig.kd,
+    0,
+    0,
+    0,
     DIRECT);
 
 MPU6050 mpu;
@@ -51,23 +51,6 @@ int giro_deadzone=1;     //Giro error allowed, make it lower to get more precisi
 
 // calibration working variables...
 int16_t raw[COORDS], mean[COORDS];
-
-/*
-void printMpu(int16_t data[COORDS]) {
-  gfx.fillRect(0, 27, 96, 36,GRAY);
-  gfx.setCursor(0,35);
-  gfx.setTextColor(WHITE);
-  gfx.print("X: ");
-  gfx.setTextColor(YELLOW);
-  gfx.print(x);
-
-  gfx.setCursor(0,45);
-  gfx.setTextColor(WHITE);
-  gfx.print("Y: ");
-  gfx.setTextColor(YELLOW);
-  gfx.print(y);
-}
-*/
 
 bool meansensors() {
   static int meanSensorIndex = 0;
@@ -272,14 +255,18 @@ void processMpuData() {
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
-      pidInput = ypr[2];
+      pidInput = ypr[1]*100;
       pid.Compute();
 
-      setMotorSpeedLeft(ypr[2] * 15000);
-      setMotorSpeedRight(ypr[1] * 15000);
+      setMotorSpeedLeft(pidOutput);
+      setMotorSpeedRight(pidOutput);
   }
 }
 
+void setPidTunings(pidConfiguration pidConfig) {
+  pid.SetTunings(pidConfig.kp, pidConfig.ki, pidConfig.kd);
+  Serial.printf("Set Pid k=%f, i=%f, d=%f\n", pidConfig.kp, pidConfig.ki, pidConfig.kd);
+}
 
 void initMpu() {
   // initialize device
@@ -293,6 +280,9 @@ void initMpu() {
       Fastwire::setup(400, true);
   #endif
 
+  pid.SetSampleTime(20);
+  pid.SetMode(AUTOMATIC);
+  pid.SetOutputLimits(-20000,20000);
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
 

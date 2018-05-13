@@ -12,9 +12,13 @@
   #define COORDS  6
 
 
+extern int16_t raw[COORDS], mean[COORDS];
+extern double pidSetpoint, pidInput, pidOutput;
+
 
   #include "config.h"
   void setMpuOffsets(mpuCalibrationConfiguration mpuConfig);
+  void setPidTunings(pidConfiguration pidConfig);
   void initMpu();
   void processMpuData();
   void initAutoCalibrate();
