@@ -11,8 +11,10 @@
 #include <menuIO/serialIn.h>
 #include <menuIO/stringIn.h>
 #include "motor.h"
-#include "mpu.h"
 #include "config.h"
+#include "mpu.h"
+#include "pid.h"
+
 
 using namespace Menu;
 
@@ -32,13 +34,13 @@ using namespace Menu;
 
 SSD_13XX gfx(OLED_CS_PIN, OLED_DC_PIN, OLED_RST_PIN, OLED_MOSI_PIN, OLED_SCLK_PIN);
 _GoBLE goble(&BLUETOOTH_SERIAL);
-robotConfiguration robotConfig;
+
 
 int test=55;
 int ledCount=0;
 bool joystickTestMode = false;
 bool mpuCalibrateMode = false;
-int lastx, lasty;
+
 result doAlert(eventMask e, prompt &item);
 
 using namespace Menu;
@@ -69,11 +71,36 @@ result doMotorStep() {
 }
 
 result doJoystickTest() {
-
   gfx.fillRect(0, 27, 191, 39,GRAY);
-  lastx=0;
-  lasty=0;
   return proceed;
+}
+
+
+void showJoystickTest() {
+  static int lastx, lasty;
+  int y = goble.readJoystickX();
+  int x = goble.readJoystickY();
+  if ((lastx != x) ||
+      (lasty != y) ) {
+      gfx.fillRect(0, 27, 191, 39,GRAY);
+      gfx.setCursor(0,35);
+      gfx.setTextColor(WHITE);
+      gfx.print("X: ");
+      gfx.setTextColor(YELLOW);
+      gfx.print(x);
+
+      gfx.setCursor(0,45);
+      gfx.setTextColor(WHITE);
+      gfx.print("Y: ");
+      gfx.setTextColor(YELLOW);
+      gfx.print(y);
+
+      gfx.drawCircle(58, 43, 15, WHITE);
+      gfx.fillCircle((x>>4) + 50, ((255-y)>>4)+ 35, 5, YELLOW);
+
+      lastx = x;
+      lasty = y;
+    }
 }
 
 result doMpuCalibrate() {
@@ -87,6 +114,17 @@ result doMpuCalibrate() {
 
 result doSaveConfig() {
   writeConfig(robotConfig);
+  return proceed;
+}
+
+result idle(menuOut& o,idleEvent e) {
+  if (e==idling) {
+    o.println(F("suspended..."));
+    o.print(F("time:"));
+    o.println(F(millis()));
+    o.println(F("press [select]"));
+    o.println(F("to continue"));
+  }
   return proceed;
 }
 
@@ -139,17 +177,14 @@ MENU(motorMenu,"Motor Cfg",doNothing,noEvent,noStyle
   ,EXIT("<Back")
 );
 
-/*
-MENU(mpuMenu,"Gyro/Accel Cfg",doNothing,noEvent,noStyle
-  ,FIELD(robotConfig.mpuConfig.xGyroOffset,"x Gyro Offset","",0,255,10,1,doMpuCalibrate,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.mpuConfig.yGyroOffset,"y Gyro Offset","",0,255,10,1,doMpuCalibrate,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.mpuConfig.zGyroOffset,"z Gyro Offset","",0,255,10,1,doMpuCalibrate,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.mpuConfig.xAccelOffset,"x Accel Offset","",0,65535,100,10,doMpuCalibrate,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.mpuConfig.yAccelOffset,"y Accel Offset","",0,65535,100,10,doMpuCalibrate,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.mpuConfig.zAccelOffset,"z Accel Offset","",0,65535,100,10,doMpuCalibrate,enterEvent,wrapStyle)
+
+MENU(pidMenu,"PID Cfg",doNothing, noEvent,noStyle
+  ,FIELD(robotConfig.pidConfig.kp,"Kp","",-1000,1000,10,1,doNothing,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.ki,"Ki","",-1000,1000,10,1,doNothing,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.kd,"Kd","",-1000,1000,10,1,doNothing,enterEvent,wrapStyle)
   ,EXIT("<Back")
 );
-*/
+
 MENU(mpuMenu,"MPU Calibrate",doNothing,noEvent,noStyle
   ,SUBMENU(mpuCalibrate)
   ,EXIT("<Back")
@@ -167,11 +202,12 @@ char buf1[]="0x11";
 MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
   ,SUBMENU(motorMenu)
   ,SUBMENU(mpuMenu)
-  ,SUBMENU(selMenu)
+  ,SUBMENU(pidMenu)
+  //,SUBMENU(selMenu)
   //,SUBMENU(mpuMenu)
   ,SUBMENU(joystickMenu)
   ,OP("Save Configuration",doSaveConfig,enterEvent)
-  ,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
+  //,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
   //,EDIT("Hex",buf1,hexNr,doNothing,noEvent,noStyle)
   ,EXIT("<Exit")
 );
@@ -203,21 +239,11 @@ MENU_OUTPUTS(out,MAX_DEPTH
 
 NAVROOT(nav,mainMenu,MAX_DEPTH,in,out);
 
-//when menu is suspended
-result idle(menuOut& o,idleEvent e) {
-  if (e==idling) {
-    o.println(F("suspended..."));
-    o.println(F("press [select]"));
-    o.println(F("to continue"));
-  }
-  return proceed;
-}
-
 void initMenu() {
   // configure custom options
   options=&myOptions;
 
-//point a function to be used when menu is suspended
+  //point a function to be used when menu is suspended
   nav.idleTask=idle;
 }
 
@@ -296,35 +322,12 @@ void loop() {
     checkForNavInput(strIn);
     nav.poll();
     if (joystickTestMode) {
-      int y = goble.readJoystickX();
-      int x = goble.readJoystickY();
-      if ((lastx != x) ||
-          (lasty != y) ) {
-            gfx.fillRect(0, 27, 191, 39,GRAY);
-            gfx.setCursor(0,35);
-            gfx.setTextColor(WHITE);
-            gfx.print("X: ");
-            gfx.setTextColor(YELLOW);
-            gfx.print(x);
-
-            gfx.setCursor(0,45);
-            gfx.setTextColor(WHITE);
-            gfx.print("Y: ");
-            gfx.setTextColor(YELLOW);
-            gfx.print(y);
-
-            gfx.drawCircle(58, 43, 15, WHITE);
-            gfx.fillCircle((x>>4) + 50, ((255-y)>>4)+ 35, 5, YELLOW);
-
-            lastx = x;
-            lasty = y;
-      }
+      showJoystickTest();
     }
 
     if (mpuCalibrateMode) {
       if (autoCalibrate(&robotConfig.mpuConfig))
         mpuCalibrateMode = false;
     }
-    //fadeLed();
     delay(5);
 }

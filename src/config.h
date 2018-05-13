@@ -1,7 +1,7 @@
 #ifndef ROBOT_CONFIG
   #define ROBOT_CONFIG
 
-  #define CONFIG_VERSION 5
+  #define CONFIG_VERSION 7
   #include <Arduino.h>
 
   typedef struct
@@ -22,9 +22,9 @@
 
   typedef struct
   {
-    float potential;
-    float integral;
-    float derivative;
+    double kp;
+    double ki;
+    double kd;
 
   } pidConfiguration;
 
@@ -41,4 +41,6 @@
   robotConfiguration readConfig();
   bool writeConfig(robotConfiguration);
   void applyConfig(robotConfiguration config);
+
+  extern robotConfiguration robotConfig;
 #endif

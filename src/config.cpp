@@ -4,6 +4,7 @@
 #include "config.h"
 #include "mpu.h"
 
+robotConfiguration robotConfig;
 
 robotConfiguration createDefaultConfig() {
   robotConfiguration config;
@@ -12,9 +13,9 @@ robotConfiguration createDefaultConfig() {
   config.motorConfig.enabled = false;
   config.motorConfig.stepMode = MOTOR_THIRTYSECOND_STEP;
 
-  config.pidConfig.potential = 1.0;
-  config.pidConfig.integral = 2.0;
-  config.pidConfig.derivative = 3.0;
+  config.pidConfig.kp = 0;
+  config.pidConfig.ki = 0;
+  config.pidConfig.kd = 0;
 
   config.mpuConfig.xGyroOffset = 0;
   config.mpuConfig.yGyroOffset = 0;

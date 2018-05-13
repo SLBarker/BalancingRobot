@@ -1,8 +1,10 @@
 #include "I2Cdev.h"
 #include <Arduino.h>
+#include <PID_v1.h>
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "mpu.h"
 #include "motor.h"
+#include "display.h"
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -10,11 +12,23 @@
     #include "Wire.h"
 #endif
 
+// PID controller
+double pidSetpoint, pidInput, pidOutput;
+
+PID pid(
+    &pidInput,
+    &pidOutput,
+    &pidSetpoint,
+    robotConfig.pidConfig.kp,
+    robotConfig.pidConfig.ki,
+    robotConfig.pidConfig.kd,
+    DIRECT);
 
 MPU6050 mpu;
 
 // MPU control/status vars
 bool dmpReady = false;  // set true if DMP init was successful
+bool rawMpuAvailable = false;
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
 uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
@@ -36,147 +50,118 @@ int acel_deadzone=8;     //Acelerometer error allowed, make it lower to get more
 int giro_deadzone=1;     //Giro error allowed, make it lower to get more precision, but sketch may not converge  (default:1)
 
 // calibration working variables...
-int16_t ax, ay, az,gx, gy, gz;
-int mean_ax,mean_ay,mean_az,mean_gx,mean_gy,mean_gz;
+int16_t raw[COORDS], mean[COORDS];
+
+/*
+void printMpu(int16_t data[COORDS]) {
+  gfx.fillRect(0, 27, 96, 36,GRAY);
+  gfx.setCursor(0,35);
+  gfx.setTextColor(WHITE);
+  gfx.print("X: ");
+  gfx.setTextColor(YELLOW);
+  gfx.print(x);
+
+  gfx.setCursor(0,45);
+  gfx.setTextColor(WHITE);
+  gfx.print("Y: ");
+  gfx.setTextColor(YELLOW);
+  gfx.print(y);
+}
+*/
 
 bool meansensors() {
   static int meanSensorIndex = 0;
-  static long buff_ax=0,buff_ay=0,buff_az=0,buff_gx=0,buff_gy=0,buff_gz=0;
+  static long buff[COORDS];
 
-  // read raw accel/gyro measurements from device
-  mpu.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  if ((meanSensorIndex % 0) == 0) {
-    // print raw values...
-    Serial.println("");
-    Serial.print("raw accl: (");
-    Serial.print(ax);
-    Serial.print(",");
-    Serial.print(ay);
-    Serial.print(",");
-    Serial.print(az);
-    Serial.println(")");
+  if (rawMpuAvailable) {
+    if ((meanSensorIndex % 0) == 0) {
+      // print raw values...
+      //printMpu(raw);
+      Serial.println("");
+      Serial.printf("raw accl: (%d, %d, %d)\n", raw[AX], raw[AY], raw[AZ]);
+      Serial.printf("raw gyro: (%d, %d, %d)\n", raw[GX], raw[GY], raw[GZ]);
+    }
 
-    Serial.print("raw gyro: (");
-    Serial.print(gx);
-    Serial.print(",");
-    Serial.print(gy);
-    Serial.print(",");
-    Serial.print(gz);
-    Serial.println(")");
+    if (meanSensorIndex >=100 && meanSensorIndex < (100 + buffersize) ) {
+      for (int i=0; i<COORDS; i++) {
+        buff[i] = buff[i] + raw[i];
+      }
+    }
+
+    if (meanSensorIndex == (100 + buffersize) ) {
+      for (int i=0; i<COORDS; i++) {
+        mean[i] = buff[i] / buffersize;
+      }
+
+      // print means...
+      //printMpu(mean);
+      Serial.println("");
+      Serial.printf("mean accl: (%d, %d, %d)\n", mean[AX], mean[AY], mean[AZ]);
+      Serial.printf("mean gyro: (%d, %d, %d)\n", mean[GX], mean[GY], mean[GZ]);
+
+      // reset for next meansensor run
+      meanSensorIndex = 0;
+      for (int i=0; i<COORDS; i++) {
+        buff[i] = 0;
+      }
+      return true;
+    }
+    else
+        meanSensorIndex++;
+
+    // clear latch - to allow next raw value to be read.
+    rawMpuAvailable = false;
   }
-
-  //Serial.print("m");
-  if (meanSensorIndex >=100 && meanSensorIndex < (100 + buffersize) ) {
-
-    buff_ax = buff_ax + ax;
-    buff_ay = buff_ay + ay;
-    buff_az = buff_az + az;
-    buff_gx = buff_gx + gx;
-    buff_gy = buff_gy + gy;
-    buff_gz = buff_gz + gz;
-  }
-  if (meanSensorIndex == (100 + buffersize) ) {
-    mean_ax = buff_ax / buffersize;
-    mean_ay = buff_ay / buffersize;
-    mean_az = buff_az / buffersize;
-    mean_gx = buff_gx / buffersize;
-    mean_gy = buff_gy / buffersize;
-    mean_gz = buff_gz / buffersize;
-
-    // print means...
-    Serial.println("");
-    Serial.print("mean accl: (");
-    Serial.print(mean_ax);
-    Serial.print(",");
-    Serial.print(mean_ay);
-    Serial.print(",");
-    Serial.print(mean_az);
-    Serial.println(")");
-
-    Serial.print("mean gyro: (");
-    Serial.print(mean_gx);
-    Serial.print(",");
-    Serial.print(mean_gy);
-    Serial.print(",");
-    Serial.print(mean_gz);
-    Serial.println(")");
-
-
-    // reset for next meansensor run
-    meanSensorIndex = 0;
-    buff_ax = 0;
-    buff_ay = 0;
-    buff_az = 0;
-    buff_gx = 0;
-    buff_gy = 0;
-    buff_gz = 0;
-    return true;
-  }
-  else
-      meanSensorIndex++;
   return false;
 }
 
 bool calibration(mpuCalibrationConfiguration * mpuConfig) {
 
     int ready=0;
-    //Serial.print("c");
     if (meansensors()) {
 
-      if (abs(mean_ax) <= acel_deadzone) {
+      if (abs(mean[AX]) <= acel_deadzone)
         ready++;
-      }
       else
-        mpuConfig->xAccelOffset=mpuConfig->xAccelOffset-mean_ax/acel_deadzone;
+        mpuConfig->xAccelOffset=mpuConfig->xAccelOffset-mean[AX]/acel_deadzone;
 
-      if (abs(mean_ay) <= acel_deadzone) {
+      if (abs(mean[AY]) <= acel_deadzone)
         ready++;
-      }
       else
-        mpuConfig->yAccelOffset=mpuConfig->yAccelOffset-mean_ay/acel_deadzone;
+        mpuConfig->yAccelOffset=mpuConfig->yAccelOffset-mean[AY]/acel_deadzone;
 
-      if (abs(16384-mean_az) <= acel_deadzone) {
+      if (abs(16384-mean[AZ]) <= acel_deadzone)
         ready++;
-      }
       else
-        mpuConfig->zAccelOffset=mpuConfig->zAccelOffset+(16384-mean_az)/acel_deadzone;
+        mpuConfig->zAccelOffset=mpuConfig->zAccelOffset+(16384-mean[AZ])/acel_deadzone;
 
-      if (abs(mean_gx) <= giro_deadzone) {
+      if (abs(mean[GX]) <= giro_deadzone)
         ready++;
-      }
       else
-        mpuConfig->xGyroOffset=mpuConfig->xGyroOffset-mean_gx/(giro_deadzone+1);
+        mpuConfig->xGyroOffset=mpuConfig->xGyroOffset-mean[GX]/(giro_deadzone+1);
 
-      if (abs(mean_gy) <= giro_deadzone) {
+      if (abs(mean[GY]) <= giro_deadzone)
         ready++;
-      }
       else
-        mpuConfig->yGyroOffset=mpuConfig->yGyroOffset-mean_gy/(giro_deadzone+1);
+        mpuConfig->yGyroOffset=mpuConfig->yGyroOffset-mean[GY]/(giro_deadzone+1);
 
-      if (abs(mean_gz) <= giro_deadzone) {
+      if (abs(mean[GZ]) <= giro_deadzone)
         ready++;
-      }
       else
-        mpuConfig->zGyroOffset=mpuConfig->zGyroOffset-mean_gz/(giro_deadzone+1);
+        mpuConfig->zGyroOffset=mpuConfig->zGyroOffset-mean[GZ]/(giro_deadzone+1);
 
 
       setMpuOffsets(*mpuConfig);
       Serial.println("");
-      Serial.print("offset accl: (");
-      Serial.print(mpuConfig->xAccelOffset);
-      Serial.print(",");
-      Serial.print(mpuConfig->yAccelOffset);
-      Serial.print(",");
-      Serial.print(mpuConfig->zAccelOffset);
-      Serial.println(")");
+      Serial.printf("offset accl: (%d, %d, %d)\n",
+        mpuConfig->xAccelOffset,
+        mpuConfig->yAccelOffset,
+        mpuConfig->zAccelOffset);
 
-      Serial.print("offset gyro: (");
-      Serial.print(mpuConfig->xGyroOffset);
-      Serial.print(",");
-      Serial.print(mpuConfig->yGyroOffset);
-      Serial.print(",");
-      Serial.print(mpuConfig->zGyroOffset);
-      Serial.println(")");
+      Serial.printf("offset gyro: (%d, %d, %d)\n",
+        mpuConfig->xGyroOffset,
+        mpuConfig->yGyroOffset,
+        mpuConfig->zGyroOffset);
     }
     return (ready == 6);
 }
@@ -188,10 +173,6 @@ bool autoCalibrate(mpuCalibrationConfiguration * mpuConfig) {
   switch (calibrateState) {
     case 0:
       Serial.println("State 0: Calibrate init...");
-      detachInterrupt(INTERRUPT_PIN);
-      //mpu.reset();
-      //mpu.initialize();
-      //mpu.setDMPEnabled(false);
       // start of calibrate
       // reset offsets and apply the values
       mpuConfig->xAccelOffset=0;
@@ -210,13 +191,13 @@ bool autoCalibrate(mpuCalibrationConfiguration * mpuConfig) {
       if (meansensors()) {
         Serial.println("State 1: meansensors complete...");
         calibrateState++;
-        mpuConfig->xAccelOffset=-mean_ax/8;
-        mpuConfig->yAccelOffset=-mean_ay/8;
-        mpuConfig->zAccelOffset=(16384-mean_az)/8;
+        mpuConfig->xAccelOffset=-mean[AX]/8;
+        mpuConfig->yAccelOffset=-mean[AY]/8;
+        mpuConfig->zAccelOffset=(16384-mean[AZ])/8;
 
-        mpuConfig->xGyroOffset=-mean_gx/4;
-        mpuConfig->yGyroOffset=-mean_gy/4;
-        mpuConfig->zGyroOffset=-mean_gz/4;
+        mpuConfig->xGyroOffset=-mean[GX]/4;
+        mpuConfig->yGyroOffset=-mean[GY]/4;
+        mpuConfig->zGyroOffset=-mean[GZ]/4;
         setMpuOffsets(*mpuConfig);
       }
       break;
@@ -234,8 +215,6 @@ bool autoCalibrate(mpuCalibrationConfiguration * mpuConfig) {
       if (meansensors()) {
         Serial.println("State 3: Compute final offsets...");
         calibrateState = 0;
-        // re-enable interrupts
-        attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), processMpuData, RISING);
       }
       break;
   }
@@ -257,8 +236,8 @@ void setMpuOffsets(mpuCalibrationConfiguration mpuConfig) {
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
 void processMpuData() {
+
   // get INT_STATUS byte
-  //Serial.print(".");
   mpuIntStatus = mpu.getIntStatus();
 
   // get current FIFO count
@@ -282,10 +261,19 @@ void processMpuData() {
       // (this lets us immediately read more without waiting for an interrupt)
       fifoCount -= packetSize;
 
+      // read and "latch" new raw values if needed (used for calibration)
+      if (!rawMpuAvailable)
+      {
+        mpu.getMotion6(&raw[AX], &raw[AY], &raw[AZ], &raw[GX], &raw[GY], &raw[GZ]);
+        rawMpuAvailable = true;
+      }
       // display Euler angles in degrees
       mpu.dmpGetQuaternion(&q, fifoBuffer);
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+      pidInput = ypr[2];
+      pid.Compute();
 
       setMotorSpeedLeft(ypr[2] * 15000);
       setMotorSpeedRight(ypr[1] * 15000);
