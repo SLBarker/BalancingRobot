@@ -14,12 +14,13 @@
 #include "config.h"
 #include "mpu.h"
 #include "pid.h"
+#include "battery.h"
 
 
 using namespace Menu;
 
 #define OLED_DC_PIN 26
-#define OLED_RST_PIN 255
+#define OLED_RST_PIN 22
 #define OLED_MOSI_PIN 11
 #define OLED_SCLK_PIN 14
 #define OLED_CS_PIN 15
@@ -342,6 +343,7 @@ void setup() {
   BLUETOOTH_SERIAL.begin(9600);
 
   robotConfig = readConfig();
+  initBattery();
   initMotor();
   initMenu();
 
@@ -395,6 +397,11 @@ void loop() {
       {
         showCalibration();
       }
+    }
+
+    if (millis() - lastUpdate > 5000) {
+      lastUpdate = millis();
+      Serial.printf("Voltage: %f volts\n", readBatteryVoltage());
     }
     delay(5);
 }

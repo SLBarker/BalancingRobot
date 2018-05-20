@@ -13,7 +13,7 @@
 #endif
 
 // PID controller
-double pidSetpoint, pidInput, pidOutput;
+double pidSetpoint, pidInput, pidOutput, lastOutput;
 
 PID pid(
     &pidInput,
@@ -280,9 +280,9 @@ void initMpu() {
       Fastwire::setup(400, true);
   #endif
 
-  pid.SetSampleTime(20);
+  pid.SetSampleTime(10);
   pid.SetMode(AUTOMATIC);
-  pid.SetOutputLimits(-20000,20000);
+  pid.SetOutputLimits(-50000,50000);
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
 
