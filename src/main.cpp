@@ -15,6 +15,7 @@
 #include "mpu.h"
 #include "pid.h"
 #include "battery.h"
+#include "input.h"
 
 
 using namespace Menu;
@@ -27,18 +28,15 @@ using namespace Menu;
 
 #define LED_PIN 13
 
-#define BLUETOOTH_SERIAL Serial5
+
 
 #define MENU_TEXT_SCALE 1
 #define MAX_DEPTH 4
 #define GRAY RGB565(32,32,32)
 
 SSD_13XX gfx(OLED_CS_PIN, OLED_DC_PIN, OLED_RST_PIN, OLED_MOSI_PIN, OLED_SCLK_PIN);
-_GoBLE goble(&BLUETOOTH_SERIAL);
-
 
 int test=55;
-int ledCount=0;
 bool joystickTestMode = false;
 bool pidTestMode = false;
 bool mpuCalibrateMode = false;
@@ -90,9 +88,9 @@ result doPidTest() {
 
 
 void showJoystickTest() {
-  static int lastx, lasty;
-  int y = goble.readJoystickX();
-  int x = goble.readJoystickY();
+  static int lastx=-256, lasty=-256;
+  int y = readJoystickX();
+  int x = readJoystickY();
   if ((lastx != x) ||
       (lasty != y) ) {
       gfx.fillRect(0, 27, 191, 39,GRAY);
@@ -109,7 +107,8 @@ void showJoystickTest() {
       gfx.print(y);
 
       gfx.drawCircle(58, 43, 15, WHITE);
-      gfx.fillCircle((x>>4) + 50, ((255-y)>>4)+ 35, 5, YELLOW);
+      gfx.fillCircle((x>>4) + 58, (-y>>4)+ 43, 5, YELLOW);
+      //gfx.fillCircle((x>>4) + 50, ((255-y)>>4)+ 35, 5, YELLOW);
 
       lastx = x;
       lasty = y;
@@ -311,28 +310,7 @@ void initMenu() {
 
 
 void checkForNavInput(stringIn<4u>& in) {
-
-  int ch = -1;
-  if (goble.available()) {
-    //Serial.println("input detected");
-    if (goble.readSwitchUp() == PRESSED)
-      ch = '+';
-
-    if (goble.readSwitchDown() == PRESSED)
-      ch = '-';
-
-    if (goble.readSwitchLeft() == PRESSED)
-      ch = '<';
-
-    if (goble.readSwitchRight() == PRESSED)
-      ch = '>';
-
-    if (goble.readSwitchSelect() == PRESSED)
-      ch = '/';
-
-    if (goble.readSwitchStart() == PRESSED)
-      ch = '*';
-  }
+  int ch = readInput();
   if (ch != -1) {
     in.write(ch);
   }
@@ -366,20 +344,6 @@ void setup() {
   Serial.println("Setup Complete");
 }
 
-void fadeLed() {
-  ledCount++;
-  int phase = (ledCount >> 8) & 0xff;
-  if (phase >= 0x80) {
-    phase = 0xff - phase;
-  }
-
-  if ((ledCount % phase) == 0)
-    digitalWrite(LED_PIN, HIGH);
-  else
-    digitalWrite(LED_PIN, LOW);
-}
-
-
 void loop() {
     checkForNavInput(strIn);
     nav.poll();
@@ -399,9 +363,10 @@ void loop() {
       }
     }
 
-    if (millis() - lastUpdate > 5000) {
-      lastUpdate = millis();
-      Serial.printf("Voltage: %f volts\n", readBatteryVoltage());
+    // check battery voltage
+    if (!batteryOk()) {
+      // disble motor if voltage too low.
+      enableMotors(false);
     }
     delay(5);
 }

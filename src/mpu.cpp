@@ -5,6 +5,7 @@
 #include "mpu.h"
 #include "motor.h"
 #include "display.h"
+#include "input.h"
 
 // Arduino Wire library is required if I2Cdev I2CDEV_ARDUINO_WIRE implementation
 // is used in I2Cdev.h
@@ -256,10 +257,11 @@ void processMpuData() {
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
       pidInput = ypr[1]*100;
+      pidSetpoint = readJoystickX();
       pid.Compute();
 
-      setMotorSpeedLeft(pidOutput);
-      setMotorSpeedRight(pidOutput);
+      setMotorSpeedLeft(pidOutput+(readJoystickY()<<5));
+      setMotorSpeedRight(-pidOutput+(readJoystickY()<<5));
   }
 }
 
