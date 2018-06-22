@@ -28,12 +28,12 @@ PID pid(
 MPU6050 mpu;
 
 // MPU control/status vars
-bool dmpReady = false;  // set true if DMP init was successful
+//bool dmpReady = false;  // set true if DMP init was successful
 bool rawMpuAvailable = false;
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
-uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
-uint16_t packetSize;    // expected DMP packet size (default is 42 bytes)
-uint16_t fifoCount;     // count of all bytes currently in FIFO
+// uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
+uint8_t packetSize;    // expected DMP packet size (default is 42 bytes)
+
 uint8_t fifoBuffer[64]; // FIFO storage buffer
 
 // orientation/motion vars
@@ -50,6 +50,7 @@ int buffersize=1000;     //Amount of readings used to average, make it higher to
 int acel_deadzone=8;     //Acelerometer error allowed, make it lower to get more precision, but sketch may not converge  (default:8)
 int giro_deadzone=1;     //Giro error allowed, make it lower to get more precision, but sketch may not converge  (default:1)
 
+//long nextMpuOut =0;
 // calibration working variables...
 int16_t raw[COORDS], mean[COORDS];
 
@@ -225,7 +226,7 @@ void processMpuData() {
   mpuIntStatus = mpu.getIntStatus();
 
   // get current FIFO count
-  fifoCount = mpu.getFIFOCount();
+  uint16_t fifoCount = mpu.getFIFOCount();
 
   // check for overflow (this should never happen unless our code is too inefficient)
   if ((mpuIntStatus & 0x10) || fifoCount == 1024) {
@@ -256,12 +257,26 @@ void processMpuData() {
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
+    Serial.print("ypr\t");
+                Serial.print(ypr[0] * 180/M_PI);
+                Serial.print("\t");
+                Serial.print(ypr[1] * 180/M_PI);
+                Serial.print("\t");
+                Serial.println(ypr[2] * 180/M_PI);
+      int joyX = readJoystickX();
+      int joyY = readJoystickY()<<5;
       pidInput = ypr[1]*100;
-      pidSetpoint = readJoystickX();
+      pidSetpoint = joyX;
+
       pid.Compute();
 
-      setMotorSpeedLeft(pidOutput+(readJoystickY()<<5));
-      setMotorSpeedRight(-pidOutput+(readJoystickY()<<5));
+    //  if (nextMpuOut < millis()) {
+    //    nextMpuOut = millis() + 500;
+    //    Serial.printf("in:%f out:%f\n", pidInput, pidOutput);
+    //  }
+
+      setMotorSpeedLeft(pidOutput+joyY);
+      setMotorSpeedRight(-pidOutput+joyY);
   }
 }
 
@@ -274,6 +289,10 @@ void initMpu() {
   // initialize device
   Serial.println(F("Initializing I2C devices..."));
 
+  Wire.setSDA(MPU_SDA_PIN);
+  Wire.setSCL(MPU_SCL_PIN);
+
+
   // join I2C bus (I2Cdev library doesn't do this automatically)
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
       Wire.begin();
@@ -284,7 +303,7 @@ void initMpu() {
 
   pid.SetSampleTime(10);
   pid.SetMode(AUTOMATIC);
-  pid.SetOutputLimits(-50000,50000);
+  pid.SetOutputLimits(-500000,500000);
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
 
@@ -294,7 +313,7 @@ void initMpu() {
 
   // load and configure the DMP
   Serial.println(F("Initializing DMP..."));
-  devStatus = mpu.dmpInitialize();
+  uint8_t devStatus = mpu.dmpInitialize();
 
   // make sure it worked (returns 0 if so)
   if (devStatus == 0) {
@@ -309,7 +328,6 @@ void initMpu() {
 
       // set our DMP Ready flag so the main loop() function knows it's okay to use it
       Serial.println(F("DMP ready! Waiting for first interrupt..."));
-      dmpReady = true;
 
       // get expected DMP packet size for later comparison
       packetSize = mpu.dmpGetFIFOPacketSize();

@@ -35,3 +35,8 @@ int readJoystickX() {
 int readJoystickY() {
   return goble.readJoystickY()-128;
 }
+
+void initInput() {
+  pinMode(BLUETOOTH_STATE_PIN, INPUT);
+  BLUETOOTH_SERIAL.begin(9600);
+}

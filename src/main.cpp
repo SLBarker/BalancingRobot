@@ -2,7 +2,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 
-#include <SSD_13XX.h>
+#include "SSD_13XX.h"
 #include <GoBLE.h>
 #include <menu.h>
 #include <menuIO/ssd1331Out.h>
@@ -20,15 +20,16 @@
 
 using namespace Menu;
 
+#define OLED_CS_PIN 9
 #define OLED_DC_PIN 26
-#define OLED_RST_PIN 22
-#define OLED_MOSI_PIN 11
-#define OLED_SCLK_PIN 14
-#define OLED_CS_PIN 15
+#define OLED_RST_PIN 29
+#define OLED_MOSI_PIN 28
+#define OLED_SCLK_PIN 27
+
+
+
 
 #define LED_PIN 13
-
-
 
 #define MENU_TEXT_SCALE 1
 #define MAX_DEPTH 4
@@ -317,14 +318,13 @@ void checkForNavInput(stringIn<4u>& in) {
 }
 
 void setup() {
+  initInput();
   Serial.begin(115200);
-  BLUETOOTH_SERIAL.begin(9600);
 
   robotConfig = readConfig();
   initBattery();
   initMotor();
   initMenu();
-
   gfx.begin(false);
   gfx.setRotation(2);
   gfx.setTextScale(MENU_TEXT_SCALE);
@@ -366,7 +366,9 @@ void loop() {
     // check battery voltage
     if (!batteryOk()) {
       // disble motor if voltage too low.
-      enableMotors(false);
+      Serial.printf("BATTERY LOW - DISABLING MOTORS");
+      robotConfig.motorConfig.enabled = false;
+      enableMotors(robotConfig.motorConfig.enabled);
     }
     delay(5);
 }

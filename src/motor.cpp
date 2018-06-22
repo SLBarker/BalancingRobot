@@ -24,6 +24,24 @@ void initMotor() {
   // configure the pin used for master motor enable.
   pinMode(MOTOR_ENABLE_PIN, OUTPUT);
 
+  // configure left motor pins
+  pinMode(MOTOR_LEFT_DIR_PIN, OUTPUT);
+  pinMode(MOTOR_LEFT_STEP_PIN, OUTPUT);
+  pinMode(MOTOR_LEFT_SLEEP_PIN, OUTPUT);
+  pinMode(MOTOR_LEFT_RESET_PIN, OUTPUT);
+
+  digitalWrite(MOTOR_LEFT_SLEEP_PIN, HIGH);
+  digitalWrite(MOTOR_LEFT_RESET_PIN, HIGH);
+
+  // configure right motor pins
+  pinMode(MOTOR_RIGHT_DIR_PIN, OUTPUT);
+  pinMode(MOTOR_RIGHT_STEP_PIN, OUTPUT);
+  pinMode(MOTOR_RIGHT_SLEEP_PIN, OUTPUT);
+  pinMode(MOTOR_RIGHT_RESET_PIN, OUTPUT);
+
+  digitalWrite(MOTOR_RIGHT_SLEEP_PIN, HIGH);
+  digitalWrite(MOTOR_RIGHT_RESET_PIN, HIGH);
+
   // configure the pins used to control the stepping mode.
   pinMode(MOTOR_STEP_MO_PIN, OUTPUT);
   pinMode(MOTOR_STEP_M1_PIN, OUTPUT);

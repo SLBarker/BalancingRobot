@@ -1,6 +1,8 @@
 #ifndef ROBOT_MPU
   #define ROBOT_MPU
-  #define INTERRUPT_PIN 2
+  #define MPU_SDA_PIN 8
+  #define MPU_SCL_PIN 7
+  #define INTERRUPT_PIN 12
 
   // index offsets for buffers
   #define AX  0

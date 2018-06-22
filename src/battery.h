@@ -1,7 +1,7 @@
 #ifndef ROBOT_BATTERY
   #define ROBOT_BATTERY
 
-  #define BATTERY_LEVEL_PIN A9
+  #define BATTERY_LEVEL_PIN A14
   #define BATTERY_STATUS_PIN 13
 
   #define MAX_PIN_VOLTAGE 3.3
