@@ -257,26 +257,27 @@ void processMpuData() {
       mpu.dmpGetGravity(&gravity, &q);
       mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
-    Serial.print("ypr\t");
-                Serial.print(ypr[0] * 180/M_PI);
-                Serial.print("\t");
-                Serial.print(ypr[1] * 180/M_PI);
-                Serial.print("\t");
-                Serial.println(ypr[2] * 180/M_PI);
+      //Serial.print("ypr\t");
+      //          Serial.print(ypr[0] * 180/M_PI);
+      //          Serial.print("\t");
+      //          Serial.print(ypr[1] * 180/M_PI);
+      //          Serial.print("\t");
+      //          Serial.println(ypr[2] * 180/M_PI);
       int joyX = readJoystickX();
-      int joyY = readJoystickY()<<5;
-      pidInput = ypr[1]*100;
+      int joyY = readJoystickY();
+      pidInput = ypr[1];
       pidSetpoint = joyX;
 
       pid.Compute();
 
-    //  if (nextMpuOut < millis()) {
-    //    nextMpuOut = millis() + 500;
-    //    Serial.printf("in:%f out:%f\n", pidInput, pidOutput);
-    //  }
-
-      setMotorSpeedLeft(pidOutput+joyY);
-      setMotorSpeedRight(-pidOutput+joyY);
+      if (motorTestMode) {
+        motorTestSpeed += (((float)joyX) / 1000);
+        setMotorSpeedLeft(motorTestSpeed);
+        setMotorSpeedRight(-motorTestSpeed);
+      } else {
+        setMotorSpeedLeft(pidOutput+joyY);
+        setMotorSpeedRight(-pidOutput+joyY);
+      }
   }
 }
 

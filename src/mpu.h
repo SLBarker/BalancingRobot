@@ -16,6 +16,8 @@
 
 extern int16_t raw[COORDS], mean[COORDS];
 extern double pidSetpoint, pidInput, pidOutput;
+extern bool motorTestMode;
+extern float motorTestSpeed;
 
 
   #include "config.h"

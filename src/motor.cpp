@@ -2,6 +2,8 @@
 #include <StepControl.h>
 #include "motor.h"
 
+int motorStepMode = 0;
+
 Stepper motor_left(MOTOR_LEFT_STEP_PIN, MOTOR_LEFT_DIR_PIN);
 Stepper motor_right(MOTOR_RIGHT_STEP_PIN, MOTOR_RIGHT_DIR_PIN);
 StepControl<> controller_left;
@@ -12,6 +14,7 @@ void enableMotors(bool enabled) {
 }
 
 void setMotorStep(int stepMode) {
+    motorStepMode = stepMode;
     Serial.print("Stepping Mode:");
     Serial.println(stepMode);
 
@@ -52,12 +55,20 @@ void initMotor() {
   motor_right.setPullInSpeed(MOTOR_PULL_IN_SPEED);
 }
 
-void setMotorSpeedLeft(float speed) {
+float rpmToStepsPerSec(double rpm) {
+  return (rpm * MOTOR_STEPS_PER_REV * (2 << motorStepMode))/60;
+  //return 0;
+}
+
+void setMotorSpeedLeft(float rpm) {
+  float speed = rpmToStepsPerSec(rpm);
+
+  Serial.printf("rpm: %f speed: %f\n", rpm, speed);
   motor_left.setMaxSpeed(speed);
   controller_left.rotateAsync(motor_left);
 }
 
-void setMotorSpeedRight(float speed) {
-  motor_right.setMaxSpeed(speed);
+void setMotorSpeedRight(float rpm) {
+  motor_right.setMaxSpeed(rpmToStepsPerSec(rpm));
   controller_right.rotateAsync(motor_right);
 }

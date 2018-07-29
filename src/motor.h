@@ -26,6 +26,7 @@
   #define MOTOR_STEP_M2_PIN 18
 
   #define MOTOR_PULL_IN_SPEED 3000
+  #define MOTOR_STEPS_PER_REV 200
 
   #define MOTOR_FULL_STEP 0
   #define MOTOR_HALF_STEP 1

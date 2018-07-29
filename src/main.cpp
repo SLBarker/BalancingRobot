@@ -40,6 +40,8 @@ SSD_13XX gfx(OLED_CS_PIN, OLED_DC_PIN, OLED_RST_PIN, OLED_MOSI_PIN, OLED_SCLK_PI
 int test=55;
 bool joystickTestMode = false;
 bool pidTestMode = false;
+bool motorTestMode = false;
+float motorTestSpeed = 0;
 bool mpuCalibrateMode = false;
 unsigned long lastUpdate;
 
@@ -66,6 +68,12 @@ result doToggleMotorCtrl() {
   enableMotors(robotConfig.motorConfig.enabled);
   return proceed;
 }
+
+result doMotorTest() {
+  motorTestSpeed = 0;
+  return proceed;
+}
+
 
 result doMotorStep() {
   setMotorStep(robotConfig.motorConfig.stepMode);
@@ -181,10 +189,6 @@ result idle(menuOut& o,idleEvent e) {
 }
 
 
-TOGGLE(robotConfig.motorConfig.enabled,setMotor,"Motor Control: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
-  ,VALUE("Off", false, doToggleMotorCtrl, enterEvent)
-  ,VALUE("On", true, doToggleMotorCtrl, enterEvent)
-);
 
 
 TOGGLE(joystickTestMode,joystickTest,"Joystick test: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
@@ -210,6 +214,17 @@ SELECT(selTest,selMenu,"Select Test",doNothing,noEvent,noStyle
   ,VALUE("Two",2,doNothing,noEvent)
 );
 
+TOGGLE(robotConfig.motorConfig.enabled,setMotor,"Motor Control: ",doNothing,noEvent,noStyle
+  ,VALUE("Off", false, doToggleMotorCtrl, enterEvent)
+  ,VALUE("On", true, doToggleMotorCtrl, enterEvent)
+);
+
+TOGGLE(motorTestMode,motorTest,"Motor Test: ",doNothing,noEvent,noStyle
+  ,VALUE("Off", false, doMotorTest, enterEvent)
+  ,VALUE("On", true, doMotorTest, enterEvent)
+);
+
+
 CHOOSE(robotConfig.motorConfig.stepMode,chooseMotorModeMenu,"Motor Mode",doNothing,noEvent,noStyle
   ,VALUE("Full Step", MOTOR_FULL_STEP,doMotorStep,enterEvent)
   ,VALUE("1/2 Step", MOTOR_HALF_STEP,doMotorStep,enterEvent)
@@ -217,6 +232,13 @@ CHOOSE(robotConfig.motorConfig.stepMode,chooseMotorModeMenu,"Motor Mode",doNothi
   ,VALUE("1/8 Step", MOTOR_EIGHTH_STEP,doMotorStep,enterEvent)
   ,VALUE("1/16 Step", MOTOR_SIXTEENTH_STEP,doMotorStep,enterEvent)
   ,VALUE("1/32 Step", MOTOR_THIRTYSECOND_STEP,doMotorStep,enterEvent)
+);
+
+MENU(motorMenu,"Motor Cfg",doNothing,noEvent,noStyle
+  ,SUBMENU(setMotor)
+  ,SUBMENU(motorTest)
+  ,SUBMENU(chooseMotorModeMenu)
+  ,EXIT("<Back")
 );
 
 //customizing a prompt look!
@@ -229,11 +251,6 @@ public:
   }
 };
 
-MENU(motorMenu,"Motor Cfg",doNothing,noEvent,noStyle
-  ,SUBMENU(setMotor)
-  ,SUBMENU(chooseMotorModeMenu)
-  ,EXIT("<Back")
-);
 
 
 MENU(pidCfgMenu,"PID Cfg",doNothing, noEvent,noStyle
