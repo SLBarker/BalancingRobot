@@ -1,6 +1,9 @@
 #include "I2Cdev.h"
 #include <Arduino.h>
 #include <PID_v1.h>
+#include <PID_AutoTune_v0.h>
+#include <stepperMgr.h>
+#include <stepper.h>
 #include "MPU6050_6Axis_MotionApps20.h"
 #include "mpu.h"
 #include "motor.h"
@@ -25,10 +28,14 @@ PID pid(
     0,
     DIRECT);
 
+PID_ATune aTune(&pidInput, &pidOutput);
+
 MPU6050 mpu;
 
 // MPU control/status vars
-//bool dmpReady = false;  // set true if DMP init was successful
+
+bool autotune = false;
+bool tuning = false;
 bool rawMpuAvailable = false;
 uint8_t mpuIntStatus;   // holds actual interrupt status byte from MPU
 // uint8_t devStatus;      // return status after each device operation (0 = success, !0 = error)
@@ -208,12 +215,18 @@ bool autoCalibrate(mpuCalibrationConfiguration * mpuConfig) {
 }
 
 void setMpuOffsets(mpuCalibrationConfiguration mpuConfig) {
+  Serial.printf("xGyroOffset:%f\n", mpuConfig.xGyroOffset);
   mpu.setXGyroOffset(mpuConfig.xGyroOffset);
+  Serial.printf("yGyroOffset:%f\n", mpuConfig.yGyroOffset);
   mpu.setYGyroOffset(mpuConfig.yGyroOffset);
+  Serial.printf("zGyroOffset:%f\n", mpuConfig.zGyroOffset);
   mpu.setZGyroOffset(mpuConfig.zGyroOffset);
 
+  Serial.printf("xAccelOffset:%f\n", mpuConfig.xAccelOffset);
   mpu.setXAccelOffset(mpuConfig.xAccelOffset);
+  Serial.printf("yAccelOffset:%f\n", mpuConfig.yAccelOffset);
   mpu.setYAccelOffset(mpuConfig.yAccelOffset);
+  Serial.printf("zAccelOffset:%f\n", mpuConfig.zAccelOffset);
   mpu.setZAccelOffset(mpuConfig.zAccelOffset);
 }
 
@@ -221,6 +234,8 @@ void setMpuOffsets(mpuCalibrationConfiguration mpuConfig) {
 // ===               INTERRUPT DETECTION ROUTINE                ===
 // ================================================================
 void processMpuData() {
+
+  static byte iteration=0;
 
   // get INT_STATUS byte
   mpuIntStatus = mpu.getIntStatus();
@@ -236,54 +251,113 @@ void processMpuData() {
 
   // otherwise, check for DMP data ready interrupt (this should happen frequently)
   } else if (mpuIntStatus & 0x02) {
-      // wait for correct available data length, should be a VERY short wait
-      while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
+    // wait for correct available data length, should be a VERY short wait
+    while (fifoCount < packetSize) fifoCount = mpu.getFIFOCount();
 
+    // track FIFO count here in case there is > 1 packet available
+    // (this lets us immediately read more without waiting for an interrupt)
+
+    while (fifoCount >= packetSize) {
+    //  Serial.printf("fifo:%d\n", fifoCount);
       // read a packet from FIFO
       mpu.getFIFOBytes(fifoBuffer, packetSize);
-
-      // track FIFO count here in case there is > 1 packet available
-      // (this lets us immediately read more without waiting for an interrupt)
       fifoCount -= packetSize;
+    }
 
-      // read and "latch" new raw values if needed (used for calibration)
-      if (!rawMpuAvailable)
-      {
-        mpu.getMotion6(&raw[AX], &raw[AY], &raw[AZ], &raw[GX], &raw[GY], &raw[GZ]);
-        rawMpuAvailable = true;
+    // read and "latch" new raw values if needed (used for calibration)
+    if (!rawMpuAvailable)
+    {
+      mpu.getMotion6(&raw[AX], &raw[AY], &raw[AZ], &raw[GX], &raw[GY], &raw[GZ]);
+      rawMpuAvailable = true;
+    }
+    // display Euler angles in degrees
+    mpu.dmpGetQuaternion(&q, fifoBuffer);
+    mpu.dmpGetGravity(&gravity, &q);
+    mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
+
+    double joyX = ((double)readJoystickX())/400;
+    double joyY = ((double)readJoystickY())/400;
+    pidInput = ypr[1];
+    pidSetpoint = joyX;
+    double balanceError = abs(pidInput - pidSetpoint);
+
+    if (!autotune) {
+      switch (pid.GetMode()) {
+        case MANUAL:
+          if (balanceError < IN_BALANCE_THRESHOLD)
+            pid.SetMode(AUTOMATIC);
+          break;
+
+        case AUTOMATIC:
+          if (balanceError > BALANCE_LOST_THRESHOLD)
+            pid.SetMode(MANUAL);
+          break;
       }
-      // display Euler angles in degrees
-      mpu.dmpGetQuaternion(&q, fifoBuffer);
-      mpu.dmpGetGravity(&gravity, &q);
-      mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
-      //Serial.print("ypr\t");
-      //          Serial.print(ypr[0] * 180/M_PI);
-      //          Serial.print("\t");
-      //          Serial.print(ypr[1] * 180/M_PI);
-      //          Serial.print("\t");
-      //          Serial.println(ypr[2] * 180/M_PI);
-      int joyX = readJoystickX();
-      int joyY = readJoystickY();
-      pidInput = ypr[1];
-      pidSetpoint = joyX;
+      if (pid.GetMode() == AUTOMATIC) {
+        bool res = pid.Compute();
 
-      pid.Compute();
+        ++iteration;
+        if (iteration == 40) {
+          iteration = 0;
+          Serial.printf("joyx:%f joyy:%f\n", joyX, joyY);
 
-      if (motorTestMode) {
-        motorTestSpeed += (((float)joyX) / 1000);
-        setMotorSpeedLeft(motorTestSpeed);
-        setMotorSpeedRight(-motorTestSpeed);
+          Serial.printf("time: %d\n", millis());
+          Serial.printf("Kp:%.4f, Ki:%.4f, Kd:%.4f\n", pid.GetKp(), pid.GetKi(), pid.GetKd());
+          Serial.printf("pidInput:%f pidSetpoint:%f\n", pidInput, pidSetpoint);
+          Serial.printf("balanceError:%f pidOuput:%f\n", balanceError, pidOutput);
+        }
+
+        if (motorTestMode) {
+          motorTestSpeed += joyY ;
+          motorLeft.setSpeed(-motorTestSpeed);
+          motorRight.setSpeed(motorTestSpeed);
+        } else {
+          motorLeft.setSpeed(-pidOutput+joyY);
+          motorRight.setSpeed(pidOutput+joyY);
+        }
       } else {
-        setMotorSpeedLeft(pidOutput+joyY);
-        setMotorSpeedRight(-pidOutput+joyY);
+        motorLeft.setSpeed(0);
+        motorRight.setSpeed(0);
       }
+    } else {
+      pid.SetMode(MANUAL);
+      // auto-tuning calls.
+      if (!tuning) {
+        // need to wait until we are approximately balanced before starting...
+        if (balanceError < IN_BALANCE_THRESHOLD)
+          tuning = true;
+      }
+      if (tuning) {
+        if (aTune.Runtime() != 0) {
+          // tuning complete...
+          autotune = false;
+          tuning = false;
+
+          // apply the updated Pid configuraion...
+          robotConfig.pidConfig.kp = aTune.GetKp();
+          robotConfig.pidConfig.ki = aTune.GetKi();
+          robotConfig.pidConfig.kd = aTune.GetKd();
+          applyPidConfig(robotConfig.pidConfig);
+        }
+      }
+    }
   }
 }
 
 void setPidTunings(pidConfiguration pidConfig) {
-  pid.SetTunings(pidConfig.kp, pidConfig.ki, pidConfig.kd);
-  Serial.printf("Set Pid k=%f, i=%f, d=%f\n", pidConfig.kp, pidConfig.ki, pidConfig.kd);
+  Serial.printf("Set Pid k=%f, i=%.4f, d=%f\n", abs(pidConfig.kp)/10, abs(pidConfig.ki)/10, abs(pidConfig.kd)/10);
+  pid.SetTunings(abs(pidConfig.kp)/10, abs(pidConfig.ki)/10, abs(pidConfig.kd)/10);
+  Serial.printf("Kp:%f, Ki:%.4f, Kd:%f\n", pid.GetKp(), pid.GetKi(), pid.GetKd());
+
+}
+
+void setPidAutoTuneConfig(pidAutoTuneConfiguration pidAutoTuneConfig) {
+  Serial.printf("Set Auto Tune settings\n");
+  aTune.SetOutputStep(pidAutoTuneConfig.outputStep);
+  aTune.SetControlType(pidAutoTuneConfig.controlType);
+  aTune.SetLookbackSec(pidAutoTuneConfig.lookbackSec);
+  aTune.SetNoiseBand(pidAutoTuneConfig.noiseBand);
 }
 
 void initMpu() {
@@ -303,8 +377,8 @@ void initMpu() {
   #endif
 
   pid.SetSampleTime(10);
-  pid.SetMode(AUTOMATIC);
-  pid.SetOutputLimits(-500000,500000);
+  pid.SetMode(MANUAL);
+  pid.SetOutputLimits(-20,20);
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
 
@@ -323,7 +397,7 @@ void initMpu() {
       mpu.setDMPEnabled(true);
 
       // enable Arduino interrupt detection
-      Serial.println(F("Enabling interrupt detection (Arduino external interrupt 0)..."));
+      Serial.println(F("Enabling interrupt detection for MPU dats available..."));
       attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), processMpuData, RISING);
       mpuIntStatus = mpu.getIntStatus();
 

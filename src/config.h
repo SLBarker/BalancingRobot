@@ -1,7 +1,7 @@
 #ifndef ROBOT_CONFIG
   #define ROBOT_CONFIG
 
-  #define CONFIG_VERSION 7
+  #define CONFIG_VERSION 8
   #include <Arduino.h>
 
   typedef struct
@@ -30,10 +30,19 @@
 
   typedef struct
   {
+    double outputStep;
+    int controlType;
+    int lookbackSec;
+    double noiseBand;
+  } pidAutoTuneConfiguration;
+
+  typedef struct
+  {
     int version;
     motorConfiguration motorConfig;
     pidConfiguration pidConfig;
     mpuCalibrationConfiguration mpuConfig;
+    pidAutoTuneConfiguration pidAutoTuneConfig;
   } robotConfiguration;
 
 
@@ -41,6 +50,7 @@
   robotConfiguration readConfig();
   bool writeConfig(robotConfiguration);
   void applyConfig(robotConfiguration config);
+  void applyPidConfig(pidConfiguration pidConfig);
 
   extern robotConfiguration robotConfig;
 #endif

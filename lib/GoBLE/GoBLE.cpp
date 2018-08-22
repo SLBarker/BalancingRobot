@@ -13,8 +13,8 @@ void _GoBLE::begin(unsigned int baudrate) {
   bleSerial->begin(baudrate);
   initRecvDataPack();
 
-  _joystickX = 127;
-  _joystickY = 127;
+  _joystickX = 128;
+  _joystickY = 128;
   for (int i = 0; i < MAXBUTTONID; i++) {
     _button[i] = RELEASED;
   }

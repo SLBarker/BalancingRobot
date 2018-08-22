@@ -1,6 +1,8 @@
 #include <Arduino.h>
+#include <stepperMgr.h>
+#include <stepper.h>
 #include "eepromStruct.h"
-#include "motor.h"
+//#include "motor.h"
 #include "config.h"
 #include "mpu.h"
 
@@ -25,6 +27,11 @@ robotConfiguration createDefaultConfig() {
   config.mpuConfig.yAccelOffset = 0;
   config.mpuConfig.zAccelOffset = 2160;
 
+  config.pidAutoTuneConfig.outputStep = 0.3;  //Turn motor at 0.3 rps
+  config.pidAutoTuneConfig.controlType = 1; // 1= PID 0 = PI
+  config.pidAutoTuneConfig.lookbackSec = 1; // half second - assume oscilation of about 2-3 seconds.
+  config.pidAutoTuneConfig.noiseBand = 0.15; // input value;
+
   return config;
 }
 
@@ -48,8 +55,10 @@ bool writeConfig(robotConfiguration config){
 }
 
 void applyMotorConfig(motorConfiguration motorConfig) {
-  enableMotors(motorConfig.enabled);
-  setMotorStep(motorConfig.stepMode);
+  Serial.printf("Motor Enabled:%s\n", motorConfig.enabled?"true":"false");
+  mgr.enableMotors(motorConfig.enabled);
+  Serial.printf("Motor Step:%d\n", motorConfig.stepMode);
+  mgr.setStepMode(motorConfig.stepMode);
 }
 
 void applyMpuConfig(mpuCalibrationConfiguration mpuConfig) {
@@ -60,9 +69,15 @@ void applyPidConfig(pidConfiguration pidConfig) {
   setPidTunings(pidConfig);
 }
 
+void applyPidAutoTuneConfig(pidAutoTuneConfiguration pidAutoTuneConfig) {
+  setPidAutoTuneConfig(pidAutoTuneConfig);
+}
+
 
 void applyConfig(robotConfiguration config) {
+  Serial.println("Apply Config");
   applyMotorConfig(config.motorConfig);
   applyMpuConfig(config.mpuConfig);
   applyPidConfig(config.pidConfig);
+  applyPidAutoTuneConfig(config.pidAutoTuneConfig);
 }

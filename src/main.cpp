@@ -10,13 +10,14 @@
 #include <menuIO/serialOut.h>
 #include <menuIO/serialIn.h>
 #include <menuIO/stringIn.h>
+#include <stepperMgr.h>
+#include <stepper.h>
 #include "motor.h"
 #include "config.h"
 #include "mpu.h"
 #include "pid.h"
 #include "battery.h"
 #include "input.h"
-
 
 using namespace Menu;
 
@@ -26,14 +27,26 @@ using namespace Menu;
 #define OLED_MOSI_PIN 28
 #define OLED_SCLK_PIN 27
 
-
-
-
 #define LED_PIN 13
 
 #define MENU_TEXT_SCALE 1
 #define MAX_DEPTH 4
 #define GRAY RGB565(32,32,32)
+
+Stepper motorLeft(
+  MOTOR_LEFT_DIR_PIN,
+  MOTOR_LEFT_STEP_PIN,
+  MOTOR_LEFT_SLEEP_PIN,
+  MOTOR_LEFT_RESET_PIN,
+  0);
+
+
+Stepper motorRight(
+  MOTOR_RIGHT_DIR_PIN,
+  MOTOR_RIGHT_STEP_PIN,
+  MOTOR_RIGHT_SLEEP_PIN,
+  MOTOR_RIGHT_RESET_PIN,
+  1);
 
 SSD_13XX gfx(OLED_CS_PIN, OLED_DC_PIN, OLED_RST_PIN, OLED_MOSI_PIN, OLED_SCLK_PIN);
 
@@ -65,7 +78,7 @@ navCodesDef myNavCodes={
 config myOptions('*', '-', myNavCodes, false);
 
 result doToggleMotorCtrl() {
-  enableMotors(robotConfig.motorConfig.enabled);
+  mgr.enableMotors(robotConfig.motorConfig.enabled);
   return proceed;
 }
 
@@ -74,9 +87,8 @@ result doMotorTest() {
   return proceed;
 }
 
-
 result doMotorStep() {
-  setMotorStep(robotConfig.motorConfig.stepMode);
+  mgr.setStepMode(robotConfig.motorConfig.stepMode);
   return proceed;
 }
 
@@ -94,7 +106,6 @@ result doPidTest() {
   gfx.fillRect(0, 27, 191, 39,GRAY);
   return proceed;
 }
-
 
 void showJoystickTest() {
   static int lastx=-256, lasty=-256;
@@ -117,7 +128,6 @@ void showJoystickTest() {
 
       gfx.drawCircle(58, 43, 15, WHITE);
       gfx.fillCircle((x>>4) + 58, (-y>>4)+ 43, 5, YELLOW);
-      //gfx.fillCircle((x>>4) + 50, ((255-y)>>4)+ 35, 5, YELLOW);
 
       lastx = x;
       lasty = y;
@@ -189,8 +199,6 @@ result idle(menuOut& o,idleEvent e) {
 }
 
 
-
-
 TOGGLE(joystickTestMode,joystickTest,"Joystick test: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
   ,VALUE("Off", false, doJoystickTest, enterEvent)
   ,VALUE("On", true, doJoystickTest, enterEvent)
@@ -251,12 +259,10 @@ public:
   }
 };
 
-
-
 MENU(pidCfgMenu,"PID Cfg",doNothing, noEvent,noStyle
-  ,FIELD(robotConfig.pidConfig.kp,"Kp","",-1000,1000,10,1,doSetPidParams,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.pidConfig.ki,"Ki","",-1000,1000,10,1,doSetPidParams,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.pidConfig.kd,"Kd","",-1000,1000,10,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.kp,"Kp","",0,200,5,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.ki,"Ki","",0,200,5,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.kd,"Kd","",0,200,1,0.1,doSetPidParams,enterEvent,wrapStyle)
   ,EXIT("<Back")
 );
 
@@ -285,8 +291,6 @@ MENU(mainMenu,"Robot Control Menu",doNothing,noEvent,wrapStyle
   ,SUBMENU(pidMenu)
   ,SUBMENU(joystickMenu)
   ,OP("Save Configuration",doSaveConfig,enterEvent)
-  //,FIELD(test,"Test","%",0,100,10,1,doNothing,noEvent,wrapStyle)
-  //,EDIT("Hex",buf1,hexNr,doNothing,noEvent,noStyle)
   ,EXIT("<Exit")
 );
 
@@ -310,8 +314,6 @@ MENU_INPUTS(in,&strIn);
 
 MENU_OUTPUTS(out,MAX_DEPTH
   ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,25,7})
-  //,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,20,6}, {10,0,10,6})
-  //  ,SSD1331_OUT(gfx,colors,6*MENU_TEXT_SCALE,9*MENU_TEXT_SCALE,{0,0,14,8},{14,0,14,8})
   ,SERIAL_OUT(Serial)
 );
 
@@ -338,9 +340,17 @@ void setup() {
   initInput();
   Serial.begin(115200);
 
+  delay(5000);
+
   robotConfig = readConfig();
   initBattery();
-  initMotor();
+
+  mgr.registerStepper(&motorLeft);
+  mgr.registerStepper(&motorRight);
+
+  //motorLeft.setSpeed(0);
+  //motorRight.setSpeed(0);
+
   initMenu();
   gfx.begin(false);
   gfx.setRotation(2);
@@ -385,7 +395,7 @@ void loop() {
       // disble motor if voltage too low.
       Serial.printf("BATTERY LOW - DISABLING MOTORS");
       robotConfig.motorConfig.enabled = false;
-      enableMotors(robotConfig.motorConfig.enabled);
+      mgr.enableMotors(robotConfig.motorConfig.enabled);
     }
     delay(5);
 }

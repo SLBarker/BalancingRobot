@@ -13,6 +13,9 @@
   #define GZ  5
   #define COORDS  6
 
+  #define IN_BALANCE_THRESHOLD 0.02
+  #define BALANCE_LOST_THRESHOLD 0.3
+
 
 extern int16_t raw[COORDS], mean[COORDS];
 extern double pidSetpoint, pidInput, pidOutput;
@@ -23,6 +26,7 @@ extern float motorTestSpeed;
   #include "config.h"
   void setMpuOffsets(mpuCalibrationConfiguration mpuConfig);
   void setPidTunings(pidConfiguration pidConfig);
+  void setPidAutoTuneConfig(pidAutoTuneConfiguration pidAutoTuneConfig);
   void initMpu();
   void processMpuData();
   void initAutoCalibrate();
