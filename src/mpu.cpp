@@ -25,7 +25,7 @@ PID pid(
     &pidSetpoint,
     0,
     0,
-    0,
+    P_ON_M,
     DIRECT);
 
 PID_ATune aTune(&pidInput, &pidOutput);
@@ -275,8 +275,8 @@ void processMpuData() {
     mpu.dmpGetGravity(&gravity, &q);
     mpu.dmpGetYawPitchRoll(ypr, &q, &gravity);
 
-    double joyX = ((double)readJoystickX())/400;
-    double joyY = ((double)readJoystickY())/400;
+    double joyX = ((double)readJoystickX())/1300;
+    double joyY = ((double)readJoystickY())/300;
     pidInput = ypr[1];
     pidSetpoint = joyX;
     double balanceError = abs(pidInput - pidSetpoint);
@@ -321,19 +321,25 @@ void processMpuData() {
         motorRight.setSpeed(0);
       }
     } else {
+
       pid.SetMode(MANUAL);
       // auto-tuning calls.
       if (!tuning) {
+        Serial.printf("Waiting for Autotune...:\n");
         // need to wait until we are approximately balanced before starting...
-        if (balanceError < IN_BALANCE_THRESHOLD)
+        if (balanceError < IN_BALANCE_THRESHOLD) {
+          Serial.printf("Starting Autotune...:\n");
           tuning = true;
+        }
       }
       if (tuning) {
         if (aTune.Runtime() != 0) {
+          Serial.printf("Autotune complete\n");
           // tuning complete...
           autotune = false;
           tuning = false;
 
+          Serial.printf("Autotune results - Kp:%f Ki:%f Kd:%f\n", aTune.GetKp(), aTune.GetKi(), aTune.GetKd());
           // apply the updated Pid configuraion...
           robotConfig.pidConfig.kp = aTune.GetKp();
           robotConfig.pidConfig.ki = aTune.GetKi();
@@ -347,7 +353,7 @@ void processMpuData() {
 
 void setPidTunings(pidConfiguration pidConfig) {
   Serial.printf("Set Pid k=%f, i=%.4f, d=%f\n", abs(pidConfig.kp)/10, abs(pidConfig.ki)/10, abs(pidConfig.kd)/10);
-  pid.SetTunings(abs(pidConfig.kp)/10, abs(pidConfig.ki)/10, abs(pidConfig.kd)/10);
+  pid.SetTunings(abs(pidConfig.kp)/10, abs(pidConfig.ki)/10, abs(pidConfig.kd)/10, P_ON_M);
   Serial.printf("Kp:%f, Ki:%.4f, Kd:%f\n", pid.GetKp(), pid.GetKi(), pid.GetKd());
 
 }
@@ -378,7 +384,7 @@ void initMpu() {
 
   pid.SetSampleTime(10);
   pid.SetMode(MANUAL);
-  pid.SetOutputLimits(-20,20);
+  pid.SetOutputLimits(-5,5);
   mpu.initialize();
   pinMode(INTERRUPT_PIN, INPUT);
 

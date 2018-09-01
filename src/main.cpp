@@ -97,15 +97,15 @@ result doSetPidParams() {
   return proceed;
 }
 
-result doJoystickTest() {
+result doToggle() {
   gfx.fillRect(0, 27, 191, 39,GRAY);
   return proceed;
 }
 
-result doPidTest() {
+/*result doPidTest() {
   gfx.fillRect(0, 27, 191, 39,GRAY);
   return proceed;
-}
+}*/
 
 void showJoystickTest() {
   static int lastx=-256, lasty=-256;
@@ -200,13 +200,13 @@ result idle(menuOut& o,idleEvent e) {
 
 
 TOGGLE(joystickTestMode,joystickTest,"Joystick test: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
-  ,VALUE("Off", false, doJoystickTest, enterEvent)
-  ,VALUE("On", true, doJoystickTest, enterEvent)
+  ,VALUE("Off", false, doToggle, enterEvent)
+  ,VALUE("On", true, doToggle, enterEvent)
 );
 
 TOGGLE(pidTestMode,pidTest,"PID test: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
-  ,VALUE("Off", false, doPidTest, enterEvent)
-  ,VALUE("On", true, doPidTest, enterEvent)
+  ,VALUE("Off", false, doToggle, enterEvent)
+  ,VALUE("On", true, doToggle, enterEvent)
 );
 
 
@@ -259,10 +259,22 @@ public:
   }
 };
 
+
+TOGGLE(autotune,pidCalibrate,"PID Calibrate: ",doNothing,noEvent,noStyle//,doExit,enterEvent,noStyle
+  ,VALUE("Off", false, doToggle, enterEvent)
+  ,VALUE("On", true, doToggle, enterEvent)
+);
+
+
 MENU(pidCfgMenu,"PID Cfg",doNothing, noEvent,noStyle
+  ,SUBMENU(pidCalibrate)
   ,FIELD(robotConfig.pidConfig.kp,"Kp","",0,200,5,1,doSetPidParams,enterEvent,wrapStyle)
-  ,FIELD(robotConfig.pidConfig.ki,"Ki","",0,200,5,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidConfig.ki,"Ki","",0,1500,5,1,doSetPidParams,enterEvent,wrapStyle)
   ,FIELD(robotConfig.pidConfig.kd,"Kd","",0,200,1,0.1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidAutoTuneConfig.outputStep,"AT output","",0.1,2,0.2,0.1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidAutoTuneConfig.controlType,"AT Type","",0,1,1,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidAutoTuneConfig.lookbackSec,"AT lookback","",0,5,1,1,doSetPidParams,enterEvent,wrapStyle)
+  ,FIELD(robotConfig.pidAutoTuneConfig.noiseBand,"AT noise","",0.1,1,0.1,0.05,doSetPidParams,enterEvent,wrapStyle)
   ,EXIT("<Back")
 );
 
@@ -340,7 +352,7 @@ void setup() {
   initInput();
   Serial.begin(115200);
 
-  delay(5000);
+  //delay(5000);
 
   robotConfig = readConfig();
   initBattery();

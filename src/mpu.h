@@ -13,7 +13,7 @@
   #define GZ  5
   #define COORDS  6
 
-  #define IN_BALANCE_THRESHOLD 0.02
+  #define IN_BALANCE_THRESHOLD 0.04
   #define BALANCE_LOST_THRESHOLD 0.3
 
 
@@ -21,6 +21,7 @@ extern int16_t raw[COORDS], mean[COORDS];
 extern double pidSetpoint, pidInput, pidOutput;
 extern bool motorTestMode;
 extern float motorTestSpeed;
+extern bool autotune;
 
 
   #include "config.h"

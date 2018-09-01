@@ -49,10 +49,10 @@ void Stepper::handleStepEnd() {
 }
 
 void Stepper::setSpeed(double rps) {
-  Serial.printf("setSpeed:%f\n", rps);
+  //Serial.printf("setSpeed:%f\n", rps);
   //StepperMgr* mgr = StepperMgr::getInstance();
   double microseconds = mgr.calculateMicroseconds(rps);
-  Serial.printf("micro:%f\n", microseconds);
+  //Serial.printf("micro:%f\n", microseconds);
 
   // set direction....
   digitalWriteFast(_dirPin, (rps >0)?HIGH:LOW);

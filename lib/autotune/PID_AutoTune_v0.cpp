@@ -17,7 +17,7 @@ PID_ATune::PID_ATune(double* Input, double* Output)
 	oStep = 30;
 	SetLookbackSec(10);
 	lastTime = millis();
-	
+
 }
 
 
@@ -25,8 +25,8 @@ PID_ATune::PID_ATune(double* Input, double* Output)
 void PID_ATune::Cancel()
 {
 	running = false;
-} 
- 
+}
+
 int PID_ATune::Runtime()
 {
 	justevaled=false;
@@ -37,10 +37,11 @@ int PID_ATune::Runtime()
 		return 1;
 	}
 	unsigned long now = millis();
-	
+
 	if((now-lastTime)<sampleTime) return false;
 	lastTime = now;
 	double refVal = *input;
+  Serial.printf("AT input:%f\n", refVal);
 	justevaled=true;
 	if(!running)
 	{ //initialize working variables the first time around
@@ -56,16 +57,28 @@ int PID_ATune::Runtime()
 	}
 	else
 	{
-		if(refVal>absMax)absMax=refVal;
-		if(refVal<absMin)absMin=refVal;
+		if(refVal>absMax) {
+      Serial.printf("absMax:%f\n", refVal);
+      absMax=refVal;
+    }
+		if(refVal<absMin) {
+      Serial.printf("absMin:%f\n", refVal);
+      absMin=refVal;
+    }
 	}
-	
+
 	//oscillate the output base on the input's relation to the setpoint
-	
-	if(refVal>setpoint+noiseBand) *output = outputStart-oStep;
-	else if (refVal<setpoint-noiseBand) *output = outputStart+oStep;
-	
-	
+
+	if(refVal>setpoint+noiseBand) {
+    *output = outputStart-oStep;
+    Serial.printf("-\n");
+  }
+	else if (refVal<setpoint-noiseBand) {
+    Serial.printf("+\n");
+    *output = outputStart+oStep;
+  }
+
+
   //bool isMax=true, isMin=true;
   isMax=true;isMin=true;
   //id peaks
@@ -76,12 +89,12 @@ int PID_ATune::Runtime()
     if(isMin) isMin = refVal<val;
     lastInputs[i+1] = lastInputs[i];
   }
-  lastInputs[0] = refVal;  
+  lastInputs[0] = refVal;
   if(nLookBack<9)
   {  //we don't want to trust the maxes or mins until the inputs array has been filled
 	return 0;
 	}
-  
+
   if(isMax)
   {
     if(peakType==0)peakType=1;
@@ -93,7 +106,7 @@ int PID_ATune::Runtime()
     }
     peak1 = now;
     peaks[peakCount] = refVal;
-   
+
   }
   else if(isMin)
   {
@@ -104,10 +117,17 @@ int PID_ATune::Runtime()
       peakCount++;
       justchanged=true;
     }
-    
+
     if(peakCount<10)peaks[peakCount] = refVal;
   }
-  
+  if (justchanged) {
+      Serial.printf("Peaks: [");
+      for (int q=0; q<(peakCount<10?peakCount:10); q++) {
+        Serial.printf("%f ",peaks[q]);
+      }
+      Serial.printf("]\ntransition\n");
+  }
+
   if(justchanged && peakCount>2)
   { //we've transitioned.  check if we can autotune based on the last peaks
     double avgSeparation = (abs(peaks[peakCount-1]-peaks[peakCount-2])+abs(peaks[peakCount-2]-peaks[peakCount-3]))/2;
@@ -116,7 +136,7 @@ int PID_ATune::Runtime()
 		FinishUp();
       running = false;
 	  return 1;
-	 
+
     }
   }
    justchanged=false;
@@ -163,7 +183,7 @@ int PID_ATune::GetControlType()
 {
 	return controlType;
 }
-	
+
 void PID_ATune::SetNoiseBand(double Band)
 {
 	noiseBand = Band;
@@ -177,16 +197,17 @@ double PID_ATune::GetNoiseBand()
 void PID_ATune::SetLookbackSec(int value)
 {
     if (value<1) value = 1;
-	
+
 	if(value<25)
 	{
+    sampleTime = 250;
 		nLookBack = value * 4;
-		sampleTime = 250;
+
 	}
 	else
 	{
+    sampleTime = value*10;
 		nLookBack = 100;
-		sampleTime = value*10;
 	}
 }
 

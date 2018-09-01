@@ -30,7 +30,7 @@ robotConfiguration createDefaultConfig() {
   config.pidAutoTuneConfig.outputStep = 0.3;  //Turn motor at 0.3 rps
   config.pidAutoTuneConfig.controlType = 1; // 1= PID 0 = PI
   config.pidAutoTuneConfig.lookbackSec = 1; // half second - assume oscilation of about 2-3 seconds.
-  config.pidAutoTuneConfig.noiseBand = 0.15; // input value;
+  config.pidAutoTuneConfig.noiseBand = 0.05; // input value;
 
   return config;
 }
